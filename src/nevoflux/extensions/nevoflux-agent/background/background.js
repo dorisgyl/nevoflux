@@ -1624,7 +1624,12 @@ class ChannelManager {
         'recording_start',
         'recording_stop',
       ]);
-      if (DIRECT_ACTIONS.has(action)) {
+      // In headless automation mode there is no sidebar, so every browser tool
+      // must execute directly in the background (P1/A2). executeBrowserTool is
+      // self-contained (Actor API + content-script fallback), so this is safe
+      // for the core actions (navigate/click/type/get_content/screenshot/
+      // snapshot/eval_js) as well as the DIRECT_ACTIONS set.
+      if (DIRECT_ACTIONS.has(action) || globalThis.__nf_headless === true) {
         console.log(`[NevoFlux] Handling ${action} directly (bypassing sidebar)`);
         executeBrowserTool(payload, 'direct')
           .then((toolResult) => {
@@ -7900,3 +7905,31 @@ console.log('[NevoFlux] API namespace: bg:*');
 // (e.g. canvas_video render PoC) without having to unwind ES module scope.
 // Safe to keep shipping; it's an inert reference, not an API surface.
 globalThis.__nf_cm = channelManager;
+
+// =============================================================================
+// Headless / automation mode (P1 · A1 + A2)
+// =============================================================================
+// The daemon injects pref `nevoflux.headless.automation=true` into the cloned
+// profile's user.js (plan P5). In that mode there is no sidebar to lazily
+// trigger the first connect, so the background connects itself and stays
+// connected via NativeChannel.scheduleReconnect. The same flag makes every
+// browser tool execute directly in the background (see the BROWSER_TOOL_REQUEST
+// gate above).
+async function initHeadlessAutoConnect() {
+  let automation = false;
+  try {
+    automation = await browser.nevoflux.getBoolPref('nevoflux.headless.automation', false);
+  } catch (e) {
+    console.warn('[NevoFlux] getBoolPref unavailable; assuming headed mode:', e);
+  }
+  globalThis.__nf_headless = automation;
+  if (!automation) return;
+  console.log('[NevoFlux] Headless automation mode ON — auto-connecting to daemon');
+  channelManager.connect();
+}
+
+browser.runtime.onStartup.addListener(initHeadlessAutoConnect);
+browser.runtime.onInstalled.addListener(initHeadlessAutoConnect);
+// onStartup may have already fired before this listener registered in a
+// freshly-launched automation browser, so also run once on script load.
+initHeadlessAutoConnect();
