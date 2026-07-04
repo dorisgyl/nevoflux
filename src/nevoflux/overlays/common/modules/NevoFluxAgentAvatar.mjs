@@ -6,11 +6,21 @@
  * NevoFluxAgentAvatar — floating chrome avatar shown while the chat is
  * minimized. Rendered as a position:fixed element over the content area.
  * State is pushed from the extension background via the nevoflux parent API.
+ *
+ * Supports pointer-drag repositioning with position persisted to prefs:
+ *   extensions.nevoflux.avatar.x / extensions.nevoflux.avatar.y
+ *
+ * _wasDrag is set true when movement during a drag exceeds 4 px; Task 7
+ * uses it to distinguish a click (open menu) from a completed drag.
  */
 const AVATAR_ID = 'nevoflux-agent-avatar';
+const PREF_X = 'extensions.nevoflux.avatar.x';
+const PREF_Y = 'extensions.nevoflux.avatar.y';
+const DRAG_THRESHOLD = 4; // pixels
 
 export const NevoFluxAgentAvatar = {
   _el: null,
+  _wasDrag: false,
 
   _ensure() {
     if (this._el && this._el.isConnected) return this._el;
@@ -28,6 +38,68 @@ export const NevoFluxAgentAvatar = {
     el.appendChild(badge);
     doc.documentElement.appendChild(el);
     this._el = el;
+
+    // Restore persisted position (Services is a chrome global — no import needed).
+    try {
+      const x = Services.prefs.getIntPref(PREF_X, -1);
+      const y = Services.prefs.getIntPref(PREF_Y, -1);
+      if (x >= 0 && y >= 0) {
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+        el.style.right = 'auto';
+        el.style.bottom = 'auto';
+      }
+    } catch (_e) {}
+
+    // Pointer drag — closure state.
+    let dragging = false;
+    let ox = 0;
+    let oy = 0;
+    let startX = 0;
+    let startY = 0;
+
+    el.addEventListener('pointerdown', (e) => {
+      dragging = true;
+      this._wasDrag = false;
+      el.setPointerCapture(e.pointerId);
+      const r = el.getBoundingClientRect();
+      ox = e.clientX - r.left;
+      oy = e.clientY - r.top;
+      startX = e.clientX;
+      startY = e.clientY;
+      el.style.cursor = 'grabbing';
+    });
+
+    el.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const x = Math.max(0, e.clientX - ox);
+      const y = Math.max(0, e.clientY - oy);
+      el.style.left = `${x}px`;
+      el.style.top = `${y}px`;
+      el.style.right = 'auto';
+      el.style.bottom = 'auto';
+      // Mark as a drag once movement exceeds the threshold.
+      if (!this._wasDrag) {
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
+          this._wasDrag = true;
+        }
+      }
+    });
+
+    el.addEventListener('pointerup', (_e) => {
+      if (!dragging) return;
+      dragging = false;
+      el.style.cursor = 'grab';
+      // Persist final position to prefs.
+      try {
+        const r = el.getBoundingClientRect();
+        Services.prefs.setIntPref(PREF_X, Math.round(r.left));
+        Services.prefs.setIntPref(PREF_Y, Math.round(r.top));
+      } catch (_e2) {}
+    });
+
     return el;
   },
 
