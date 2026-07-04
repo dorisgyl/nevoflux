@@ -1601,6 +1601,49 @@
         "returns": { "$ref": "ApiResult" }
       },
       {
+        "name": "setAgentStatus",
+        "type": "function",
+        "async": "promise",
+        "description": "Set the floating agent avatar state (idle|working|needs-you).",
+        "parameters": [{ "name": "state", "type": "string" }],
+        "returns": { "type": "object", "additionalProperties": true }
+      },
+      {
+        "name": "showAgentAvatar",
+        "type": "function",
+        "async": "promise",
+        "description": "Show the floating agent avatar (minimized mode).",
+        "parameters": [],
+        "returns": { "type": "object", "additionalProperties": true }
+      },
+      {
+        "name": "hideAgentAvatar",
+        "type": "function",
+        "async": "promise",
+        "description": "Hide/remove the floating agent avatar.",
+        "parameters": [],
+        "returns": { "type": "object", "additionalProperties": true }
+      },
+      {
+        "name": "getAgentAvatarPosition",
+        "type": "function",
+        "async": "promise",
+        "description": "Read persisted avatar position, or null if unset.",
+        "parameters": [],
+        "returns": { "type": ["object", "null"], "additionalProperties": true }
+      },
+      {
+        "name": "setAgentAvatarPosition",
+        "type": "function",
+        "async": "promise",
+        "description": "Persist avatar position.",
+        "parameters": [
+          { "name": "x", "type": "number" },
+          { "name": "y", "type": "number" }
+        ],
+        "returns": { "type": "object", "additionalProperties": true }
+      },
+      {
         "name": "probe",
         "type": "function",
         "async": "promise",

@@ -2346,6 +2346,42 @@ this.nevoflux = class extends ExtensionAPI {
           return { success: true };
         },
 
+        // ========== Agent Avatar (floating minimized indicator) ==========
+
+        async setAgentStatus(state) {
+          const win = Services.wm.getMostRecentWindow('navigator:browser');
+          win?.NevoFluxAgentAvatar?.setState(state);
+          return { success: true };
+        },
+
+        async showAgentAvatar() {
+          const win = Services.wm.getMostRecentWindow('navigator:browser');
+          win?.NevoFluxAgentAvatar?.show();
+          return { success: true };
+        },
+
+        async hideAgentAvatar() {
+          const win = Services.wm.getMostRecentWindow('navigator:browser');
+          win?.NevoFluxAgentAvatar?.hide();
+          return { success: true };
+        },
+
+        async getAgentAvatarPosition() {
+          try {
+            const x = Services.prefs.getIntPref('extensions.nevoflux.avatar.x', -1);
+            const y = Services.prefs.getIntPref('extensions.nevoflux.avatar.y', -1);
+            return x < 0 || y < 0 ? null : { x, y };
+          } catch (e) {
+            return null;
+          }
+        },
+
+        async setAgentAvatarPosition(x, y) {
+          Services.prefs.setIntPref('extensions.nevoflux.avatar.x', Math.round(x));
+          Services.prefs.setIntPref('extensions.nevoflux.avatar.y', Math.round(y));
+          return { success: true };
+        },
+
         onBridgeRequest: new EventManager({
           context,
           module: 'nevoflux',
