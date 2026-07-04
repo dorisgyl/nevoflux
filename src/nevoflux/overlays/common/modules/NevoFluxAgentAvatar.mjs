@@ -160,7 +160,10 @@ export const NevoFluxAgentAvatar = {
               'NevoFlux',
               'The agent is still working. Close anyway?'
             );
-            if (!ok) return;
+            if (!ok) {
+              this._closeMenu();
+              return;
+            }
           }
           NevofluxBridgeRouter.request('avatar:close', {}).catch(() => {});
           this._closeMenu();
@@ -189,7 +192,7 @@ export const NevoFluxAgentAvatar = {
 
     // Dismiss on any outside click (captured in the capture phase).
     this._outsideClickHandler = (e) => {
-      if (!menu.contains(e.target) && e.target !== this._el) {
+      if (!menu.contains(e.target) && !this._el.contains(e.target)) {
         this._closeMenu();
       }
     };
