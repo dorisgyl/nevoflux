@@ -9,10 +9,7 @@ import { makeRecordingId } from '../content/handoff-logic.mjs';
 import { makeHeader } from '../content/recorder-logic.mjs';
 
 // Floating-avatar state machine and prompt policy (Tasks 1 & 2)
-import {
-  createAgentStatusMachine,
-  AgentUiState,
-} from './agent-status-machine.mjs';
+import { createAgentStatusMachine } from './agent-status-machine.mjs';
 import { promptFor } from './avatar-prompt-policy.mjs';
 
 // Immediate debug log to verify script is loading
