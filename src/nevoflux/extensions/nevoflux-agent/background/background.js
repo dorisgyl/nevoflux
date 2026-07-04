@@ -8,6 +8,13 @@
 import { makeRecordingId } from '../content/handoff-logic.mjs';
 import { makeHeader } from '../content/recorder-logic.mjs';
 
+// Floating-avatar state machine and prompt policy (Tasks 1 & 2)
+import {
+  createAgentStatusMachine,
+  AgentUiState,
+} from './agent-status-machine.mjs';
+import { promptFor } from './avatar-prompt-policy.mjs';
+
 // Immediate debug log to verify script is loading
 console.log('[NevoFlux] Background script starting...');
 
@@ -61,6 +68,9 @@ const BackgroundAPI = {
   SIDEBAR_CLOSE: 'bg:sidebar_close',
   SIDEBAR_OPEN: 'bg:sidebar_open',
   SIDEBAR_SET_WIDTH: 'bg:sidebar_set_width',
+
+  // Floating avatar control
+  AGENT_MINIMIZE: 'bg:agent_minimize',
 
   // Tab management
   OPEN_TAB: 'bg:open_tab',
@@ -1661,6 +1671,25 @@ class ChannelManager {
       }
     }
 
+    // Feed the floating-avatar state machine.
+    // NOTE: PERMISSION_RESPONSE and ASK_USER_RESPONSE are OUTGOING (extension→daemon);
+    // they never appear here as inbound messages. ask_close is emitted from the
+    // outbound send paths instead (handleAskUserResponse and SEND_TO_AGENT case).
+    switch (message?.type) {
+      case MessageTypes.STREAM_CHUNK:
+        AvatarController.onEvent(message?.payload?.done ? 'stream_end' : 'stream_start');
+        break;
+      case MessageTypes.STREAM_END:
+        AvatarController.onEvent('stream_end');
+        break;
+      case MessageTypes.PERMISSION_REQUEST:
+      case MessageTypes.ASK_USER_REQUEST:
+        AvatarController.onEvent('ask_open');
+        break;
+      default:
+        break;
+    }
+
     // All messages go to Sidebar - Sidebar decides how to handle
     broadcastToSidebar(message);
   }
@@ -1698,6 +1727,8 @@ class ChannelManager {
         },
       });
     }
+    // Push offline/online state to the floating avatar (if shown).
+    AvatarController.onConnection(connected);
     this.broadcastConnectionStatus();
   }
 
@@ -1738,6 +1769,90 @@ class ChannelManager {
 // =============================================================================
 
 const channelManager = new ChannelManager();
+
+// =============================================================================
+// Floating-Avatar Controller
+// =============================================================================
+
+const KEEPALIVE_MS = 10_000; // < 30s daemon idle timeout (server.rs:297)
+
+/**
+ * AvatarController manages the floating agent avatar lifecycle:
+ * - show/hide the native avatar widget
+ * - drive the Task-1 state machine from daemon message events
+ * - push state to chrome via browser.nevoflux.setAgentStatus
+ * - fire prompts via Task-2 avatar-prompt-policy (debounced)
+ * - run a <30s keepalive while shown so the daemon doesn't self-terminate
+ * - reflect the offline state on channel disconnect/reconnect
+ */
+const AvatarController = {
+  machine: createAgentStatusMachine(),
+  shown: false,
+  keepaliveTimer: null,
+
+  show() {
+    if (this.shown) return;
+    this.shown = true;
+    // Do NOT reset — the machine tracks state continuously (onEvent applies even
+    // while hidden), so it already reflects working/idle/needs-you at minimize.
+    browser.nevoflux.showAgentAvatar().catch(() => {});
+    this.pushState();
+    this.keepaliveTimer = setInterval(() => {
+      // Keepalive: any channel message resets the daemon's 30s idle timer.
+      // A ping suffices; avatar state comes from the message stream, not this.
+      channelManager.sendToAgent({ type: 'ping', payload: { timestamp: Date.now() } });
+    }, KEEPALIVE_MS);
+  },
+
+  hide() {
+    if (!this.shown) return;
+    this.shown = false;
+    clearInterval(this.keepaliveTimer);
+    this.keepaliveTimer = null;
+    browser.nevoflux.hideAgentAvatar().catch(() => {});
+  },
+
+  onConnection(connected) {
+    if (!this.shown) return;
+    browser.nevoflux.setAgentStatus(connected ? this.machine.getState() : 'offline')
+      .catch(() => {});
+  },
+
+  _lastPromptAt: 0,
+
+  pushState() {
+    browser.nevoflux.setAgentStatus(this.machine.getState()).catch(() => {});
+  },
+
+  async onEvent(kind) {
+    if (!this.shown) { this.machine.apply({ kind }); return; }
+    const t = this.machine.apply({ kind });
+    if (t.changed) this.pushState();
+    let focused = true;
+    try { focused = (await browser.windows.getLastFocused({})).focused; } catch (e) {}
+    const prompt = promptFor(t, focused);
+    // Debounce: swallow prompts within 1.5s of the last one (avoids spam on a
+    // fast working→idle→working burst).
+    if (prompt && Date.now() - this._lastPromptAt > 1500) {
+      this._lastPromptAt = Date.now();
+      this.fire(prompt);
+    }
+  },
+
+  fire(prompt) {
+    // Bubble always; OS notification only when unfocused.
+    browser.nevoflux.setAgentStatus(`${this.machine.getState()}|bubble:${prompt.bubble}`).catch(() => {});
+    if (prompt.os) {
+      browser.notifications.create(`nevoflux-avatar-${Date.now()}`, {
+        type: 'basic',
+        iconUrl: browser.runtime.getURL('icons/icon-48.png'),
+        title: 'NevoFlux',
+        message: prompt.bubble,
+      });
+    }
+  },
+};
+globalThis.__nf_avatar = AvatarController;
 
 // =============================================================================
 // Sidebar Communication
@@ -6212,6 +6327,9 @@ async function executeAskUser(params) {
 function handleAskUserResponse(payload) {
   const { request_id, answer, is_custom, selected_index, cancelled } = payload;
 
+  // User has answered — avatar returns from needs-you to working/idle.
+  AvatarController.onEvent('ask_close');
+
   const pending = pendingAskUserRequests.get(request_id);
   if (!pending) {
     console.warn('[NevoFlux] AskUser: No pending request found for', request_id);
@@ -7048,6 +7166,12 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
               payload.payload.content = hint + '\n\n' + payload.payload.content;
             }
           }
+          // permission_response is outgoing (extension→daemon); fire ask_close so
+          // the avatar machine exits needs-you when the user answers a permission
+          // prompt (ask_user_response takes the other outgoing path via handleAskUserResponse).
+          if (payload?.type === MessageTypes.PERMISSION_RESPONSE) {
+            AvatarController.onEvent('ask_close');
+          }
           const sent = channelManager.sendToAgent(payload);
           sendResponse({ success: sent });
         } catch (e) {
@@ -7099,12 +7223,23 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
     case BackgroundAPI.SIDEBAR_OPEN:
       browser.sidebarAction
         .open()
-        .then(() => sendResponse({ success: true }))
+        .then(() => {
+          // Restoring the sidebar hides the floating avatar.
+          AvatarController.hide();
+          sendResponse({ success: true });
+        })
         .catch((err) => {
           console.warn('[NevoFlux] Failed to open sidebar:', err);
           sendResponse({ success: false, error: err.message });
         });
       return true; // Keep sendResponse valid for async
+
+    case BackgroundAPI.AGENT_MINIMIZE:
+      browser.sidebarAction
+        .close()
+        .then(() => { AvatarController.show(); sendResponse({ success: true }); })
+        .catch((err) => sendResponse({ success: false, error: err.message }));
+      return true;
 
     case BackgroundAPI.SIDEBAR_SET_WIDTH:
       // Fallback: try browser.nevoflux API (requires browser rebuild with new schema)
