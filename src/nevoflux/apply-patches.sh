@@ -295,16 +295,28 @@ fi
 
 # 9a. Add NevoFlux menu item to native menu bar (Tools menu)
 #     Visible on macOS native menu bar, and Linux/Windows menu bar when shown.
-MENUBAR_INC="${ENGINE_DIR}/browser/base/content/browser-menubar.inc"
-if [ -f "${MENUBAR_INC}" ]; then
+#     Firefox 151 renamed browser-menubar.inc -> browser-menubar.inc.xhtml;
+#     probe both names so pre- and post-sync engine snapshots are covered.
+MENUBAR_INC=""
+for MENUBAR_CANDIDATE in \
+  "${ENGINE_DIR}/browser/base/content/browser-menubar.inc.xhtml" \
+  "${ENGINE_DIR}/browser/base/content/browser-menubar.inc"; do
+  if [ -f "${MENUBAR_CANDIDATE}" ]; then
+    MENUBAR_INC="${MENUBAR_CANDIDATE}"
+    break
+  fi
+done
+if [ -n "${MENUBAR_INC}" ]; then
   if ! grep -q 'menu_nevoflux' "${MENUBAR_INC}"; then
-    echo "Adding NevoFlux to native menu bar (Tools menu)..."
+    echo "Adding NevoFlux to native menu bar (Tools menu) in $(basename "${MENUBAR_INC}")..."
     sedi 's|command="View:PageInfo" data-l10n-id="menu-tools-page-info"/>|command="View:PageInfo" data-l10n-id="menu-tools-page-info"/>\
               <menuseparator id="nevofluxSep"/>\
               <menuitem id="menu_nevoflux"\
                         label="NevoFlux"\
                         oncommand="var w=Services.wm.getMostRecentWindow(\&apos;navigator:browser\&apos;);if(w\&amp;\&amp;w.gBrowser){w.gBrowser.selectedTab=w.gBrowser.addTab(\&apos;nevoflux://settings\&apos;,{triggeringPrincipal:Services.scriptSecurityManager.getSystemPrincipal()});w.focus()}"/>|' "${MENUBAR_INC}"
   fi
+else
+  echo "WARNING: browser-menubar.inc(.xhtml) not found; skipping native menu bar injection" >&2
 fi
 
 # 9b. Add NevoFlux menu item to hamburger menu (app menu)
