@@ -11,6 +11,7 @@
 import { runner } from './test-runner.mjs';
 
 // Import all test files to register their test suites
+import './agent-status-machine.test.mjs';
 import './nevoflux-child.test.mjs';
 import './ext-nevoflux.test.mjs';
 import './pack-ui-logic.test.mjs';
