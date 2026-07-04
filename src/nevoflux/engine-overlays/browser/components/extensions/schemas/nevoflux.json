@@ -643,6 +643,17 @@
         "returns": { "type": "string" }
       },
       {
+        "name": "getBoolPref",
+        "type": "function",
+        "async": "promise",
+        "description": "Read a boolean Gecko preference (parent process). Used to detect headless/automation mode before any native connection exists.",
+        "parameters": [
+          { "name": "name", "type": "string" },
+          { "name": "fallback", "type": "boolean", "optional": true }
+        ],
+        "returns": { "type": "boolean" }
+      },
+      {
         "name": "getText",
         "type": "function",
         "async": "promise",

@@ -70,6 +70,17 @@ this.nevoflux = class extends ExtensionAPI {
           return API_VERSION;
         },
 
+        // Read a boolean pref in the parent process. Lets the background detect
+        // headless/automation mode (pref injected by the daemon into the cloned
+        // profile's user.js, plan P5) BEFORE any native connection exists.
+        async getBoolPref(name, fallback = false) {
+          try {
+            return Services.prefs.getBoolPref(name, fallback);
+          } catch (e) {
+            return fallback;
+          }
+        },
+
         // ========== Data Extraction (chat mode) ==========
 
         async getText(tabId, selector) {
