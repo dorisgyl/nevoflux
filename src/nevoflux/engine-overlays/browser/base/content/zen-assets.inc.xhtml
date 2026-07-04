@@ -31,6 +31,7 @@
 <link rel="stylesheet" type="text/css" href="chrome://browser/content/zen-styles/zen-welcome.css" />
 <link rel="stylesheet" type="text/css" href="chrome://browser/content/zen-styles/zen-media-controls.css" />
 <link rel="stylesheet" type="text/css" href="chrome://browser/content/zen-styles/zen-download-box-animation.css" />
+<link rel="stylesheet" type="text/css" href="chrome://browser/content/zen-styles/nevoflux-agent-avatar.css" />
 </linkset>
 
 # Startup "preloaded" scripts that requre globals such as gBrowser and gURLBar
@@ -51,3 +52,4 @@
 # custom elements, so the setElementCreationCallback loop throws NotSupportedError
 # and breaks workspaces/spaces. Keep only the NevoFlux-specific module.
 <script type="module" src="chrome://browser/content/zen-components/NevoFluxSidebarResize.mjs"></script>
+<script type="module" src="chrome://browser/content/zen-components/NevoFluxAgentAvatar.mjs"></script>
