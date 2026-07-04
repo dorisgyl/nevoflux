@@ -45,3 +45,32 @@
 @media (prefers-reduced-motion: reduce) {
   .nevoflux-agent-avatar { animation: none !important; }
 }
+
+/* ---- Avatar context menu ---- */
+.nevoflux-agent-avatar-menu {
+  position: fixed;
+  z-index: 2147483001; /* one above the avatar */
+  transform: translateY(-100%);
+  background: var(--zen-colors-tertiary, #2b2b2b);
+  border: 1px solid var(--zen-colors-border, #444);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  padding: 4px 0;
+  min-width: 96px;
+  opacity: 1;
+  transition: opacity 0.1s ease, transform 0.1s ease;
+}
+
+.nevoflux-agent-avatar-menu__item {
+  padding: 7px 14px;
+  font: 13px/1.4 system-ui, sans-serif;
+  color: var(--zen-branding-fg, #fff);
+  cursor: pointer;
+  border-radius: 4px;
+  margin: 0 4px;
+  transition: background 0.08s ease;
+}
+
+.nevoflux-agent-avatar-menu__item:hover {
+  background: color-mix(in srgb, var(--zen-primary-color, AccentColor) 20%, var(--zen-colors-secondary, #3a3a3a) 80%);
+}

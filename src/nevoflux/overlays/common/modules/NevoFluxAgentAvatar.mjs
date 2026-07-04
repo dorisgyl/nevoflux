@@ -12,7 +12,16 @@
  *
  * _wasDrag is set true when movement during a drag exceeds 4 px; Task 7
  * uses it to distinguish a click (open menu) from a completed drag.
+ *
+ * Task 7: on a non-drag click, a small context menu appears with three actions:
+ *   恢复 (restore), 最大化 (maximize), 关闭 (close).
+ * Actions are routed to the extension background via NevofluxBridgeRouter.
  */
+
+const { NevofluxBridgeRouter } = ChromeUtils.importESModule(
+  'resource:///modules/NevofluxBridgeRouter.sys.mjs'
+);
+
 const AVATAR_ID = 'nevoflux-agent-avatar';
 const PREF_X = 'extensions.nevoflux.avatar.x';
 const PREF_Y = 'extensions.nevoflux.avatar.y';
@@ -21,6 +30,8 @@ const DRAG_THRESHOLD = 4; // pixels
 export const NevoFluxAgentAvatar = {
   _el: null,
   _wasDrag: false,
+  _menu: null,
+  _outsideClickHandler: null,
 
   _ensure() {
     if (this._el && this._el.isConnected) return this._el;
@@ -100,7 +111,99 @@ export const NevoFluxAgentAvatar = {
       } catch (_e2) {}
     });
 
+    // Click: open menu if this was not a drag.
+    el.addEventListener('click', () => {
+      if (this._wasDrag) return;
+      if (this._menu) {
+        this._closeMenu();
+      } else {
+        this._openMenu();
+      }
+    });
+
     return el;
+  },
+
+  /**
+   * Build and display the context menu near the avatar.
+   * Items: 恢复 / 最大化 / 关闭 (Chinese labels, per product decision).
+   */
+  _openMenu() {
+    this._closeMenu(); // guard against doubles
+    const doc = window.document;
+    const menu = doc.createElement('div');
+    menu.className = 'nevoflux-agent-avatar-menu';
+
+    const items = [
+      {
+        label: '恢复',
+        handler: () => {
+          NevofluxBridgeRouter.request('avatar:restore', {}).catch(() => {});
+          this._closeMenu();
+        },
+      },
+      {
+        label: '最大化',
+        handler: () => {
+          NevofluxBridgeRouter.request('avatar:maximize', {}).catch(() => {});
+          this._closeMenu();
+        },
+      },
+      {
+        label: '关闭',
+        handler: () => {
+          const state = this._el.getAttribute('data-state');
+          if (state === 'working' || state === 'needs-you') {
+            // eslint-disable-next-line no-alert
+            const ok = Services.prompt.confirm(
+              window,
+              'NevoFlux',
+              'The agent is still working. Close anyway?'
+            );
+            if (!ok) return;
+          }
+          NevofluxBridgeRouter.request('avatar:close', {}).catch(() => {});
+          this._closeMenu();
+        },
+      },
+    ];
+
+    for (const item of items) {
+      const btn = doc.createElement('div');
+      btn.className = 'nevoflux-agent-avatar-menu__item';
+      btn.textContent = item.label;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        item.handler();
+      });
+      menu.appendChild(btn);
+    }
+
+    // Position the menu above and to the left of the avatar.
+    const r = this._el.getBoundingClientRect();
+    menu.style.left = `${Math.round(r.left)}px`;
+    menu.style.top = `${Math.round(r.top - 8)}px`; // will be shifted up by translateY in CSS
+
+    doc.documentElement.appendChild(menu);
+    this._menu = menu;
+
+    // Dismiss on any outside click (captured in the capture phase).
+    this._outsideClickHandler = (e) => {
+      if (!menu.contains(e.target) && e.target !== this._el) {
+        this._closeMenu();
+      }
+    };
+    doc.addEventListener('click', this._outsideClickHandler, true);
+  },
+
+  _closeMenu() {
+    if (!this._menu) return;
+    this._menu.remove();
+    this._menu = null;
+    if (this._outsideClickHandler) {
+      window.document.removeEventListener('click', this._outsideClickHandler, true);
+      this._outsideClickHandler = null;
+    }
   },
 
   show() {
@@ -109,6 +212,7 @@ export const NevoFluxAgentAvatar = {
   },
 
   hide() {
+    this._closeMenu();
     if (this._el) this._el.hidden = true;
   },
 

@@ -2752,6 +2752,44 @@ if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onBridgeRequest)
           }
         }
 
+        // ----- Avatar menu bridge requests (Task 7) -----
+
+        case 'avatar:restore': {
+          try {
+            await browser.sidebarAction.open();
+            AvatarController.hide();
+            result = { success: true };
+          } catch (err) {
+            result = { success: false, error: { code: -1, message: err.message } };
+          }
+          break;
+        }
+
+        case 'avatar:maximize': {
+          try {
+            await browser.tabs.create({
+              url: browser.runtime.getURL('wasm/chat-sidebar/index.html'),
+            });
+            AvatarController.hide();
+            result = { success: true };
+          } catch (err) {
+            result = { success: false, error: { code: -1, message: err.message } };
+          }
+          break;
+        }
+
+        case 'avatar:close': {
+          try {
+            AvatarController.hide();
+            result = { success: true };
+          } catch (err) {
+            result = { success: false, error: { code: -1, message: err.message } };
+          }
+          break;
+        }
+
+        // ----- End Avatar menu bridge requests -----
+
         default:
           result = { success: false, error: { code: -1, message: `Unknown bridge type: ${type}` } };
       }
