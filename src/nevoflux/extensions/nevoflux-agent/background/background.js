@@ -2766,7 +2766,11 @@ if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onBridgeRequest)
 
         case 'avatar:restore': {
           try {
-            await browser.sidebarAction.open();
+            // The avatar module already opened the sidebar DIRECTLY from chrome
+            // (SidebarController.show) within the gesture, so we must NOT call
+            // browser.sidebarAction.open() here — it fires without input context
+            // and is rejected. Just do the bookkeeping: stop the keepalive and
+            // broadcast the avatar hide.
             AvatarController.hide();
             result = { success: true };
           } catch (err) {

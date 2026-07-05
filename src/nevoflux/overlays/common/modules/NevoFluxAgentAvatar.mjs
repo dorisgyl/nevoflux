@@ -26,6 +26,12 @@ const AVATAR_ID = 'nevoflux-agent-avatar';
 const PREF_X = 'extensions.nevoflux.avatar.x';
 const PREF_Y = 'extensions.nevoflux.avatar.y';
 const DRAG_THRESHOLD = 4; // pixels
+// Chrome-side command id of the NevoFlux extension sidebar panel: makeWidgetId
+// of the extension id `agent@nevoflux.com` (`agent_nevoflux_com`) plus the
+// `-sidebar-action` suffix. Opening via the chrome SidebarController runs in the
+// browser window context, which has no requireUserInput gating — unlike the
+// background's browser.sidebarAction.open() (EventManager fire.async).
+const NEVOFLUX_SIDEBAR_ID = 'agent_nevoflux_com-sidebar-action';
 
 export const NevoFluxAgentAvatar = {
   _el: null,
@@ -145,8 +151,18 @@ export const NevoFluxAgentAvatar = {
       {
         label: '恢复',
         handler: () => {
+          // Open the sidebar DIRECTLY from chrome. Chrome APIs have no
+          // requireUserInput gating, so this succeeds where the background's
+          // browser.sidebarAction.open() loses the gesture across the bridge
+          // round-trip and is rejected.
+          try {
+            window.SidebarController?.show(NEVOFLUX_SIDEBAR_ID);
+          } catch (_e) {}
+          // Still notify the background for bookkeeping (stop the keepalive,
+          // broadcast the hide); it no longer opens the sidebar itself.
           NevofluxBridgeRouter.request('avatar:restore', {}).catch(() => {});
-          this._closeMenu();
+          // Hide the avatar locally (also closes this menu).
+          this.hide();
         },
       },
       {
