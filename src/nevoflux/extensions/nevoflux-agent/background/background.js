@@ -1723,6 +1723,11 @@ class ChannelManager {
           params: { prefix: '' },
         },
       });
+    } else {
+      // Daemon channel dropped — the questions it asked are now unanswerable.
+      // Drop them so a later sidebar-reconnect replayPendingAsks() can't
+      // resurrect dead asks (I1). Distinct from the sidebar-channel replay.
+      clearPendingAskUserRequests();
     }
     // Push offline/online state to the floating avatar (if shown).
     AvatarController.onConnection(connected);
@@ -1810,6 +1815,11 @@ const AvatarController = {
   },
 
   onConnection(connected) {
+    // Daemon dropped: its in-flight stream/asks cannot outlive the disconnect,
+    // so wipe the machine even while hidden (it tracks state continuously). On
+    // reconnect the getState() push below then reports idle rather than a stale
+    // working/needs-you (I1).
+    if (!connected) this.machine.reset();
     if (!this.shown) return;
     browser.nevoflux.setAgentStatus(connected ? this.machine.getState() : 'offline')
       .catch(() => {});
@@ -6329,6 +6339,11 @@ async function executeAskUser(params) {
       if (pendingAskUserRequests.has(requestId)) {
         pendingAskUserRequests.delete(requestId);
         console.log('[NevoFlux] AskUser: Timed out waiting for user response');
+        // Notify the avatar machine so it exits needs-you. Without this the
+        // open-ask count never decrements and the avatar sticks in needs-you
+        // forever (C1). Mirrors handleAskUserResponse, which fires ask_close
+        // when the user actually answers.
+        AvatarController.onEvent('ask_close');
         resolve({
           success: false,
           error: { code: 8001, message: 'User interaction timed out', recoverable: true },
@@ -6336,10 +6351,16 @@ async function executeAskUser(params) {
       }
     }, timeout_ms);
 
-    // Store pending request
+    // Store pending request. Keep the question payload alongside the resolver so
+    // replayPendingAsks() can re-broadcast it verbatim when the sidebar
+    // reconnects after being closed in minimized-to-avatar mode (C2).
     pendingAskUserRequests.set(requestId, {
       resolve,
       timeoutId,
+      question: question.trim(),
+      options,
+      allow_custom,
+      timeout_ms,
     });
 
     // Send request to sidebar
@@ -6393,6 +6414,52 @@ function handleAskUserResponse(payload) {
       selected_index: selected_index !== undefined ? selected_index : -1,
     },
   });
+}
+
+/**
+ * Re-broadcast every still-pending AskUser question to the sidebar.
+ *
+ * `ask_user_request` is broadcast once when the tool runs; if the sidebar was
+ * closed (minimized-to-avatar mode) at that moment, the question is lost and the
+ * ask silently times out with no UI. This is called from the sidebar's on-load
+ * ping — its reliable "I'm back and listening" signal — to restore the pending
+ * question. Safe against double-delivery: entries are deleted from the map on
+ * response/timeout, so only genuinely-unanswered asks are ever replayed (C2).
+ */
+function replayPendingAsks() {
+  for (const [requestId, pending] of pendingAskUserRequests) {
+    broadcastToSidebar({
+      type: MessageTypes.ASK_USER_REQUEST,
+      payload: {
+        request_id: requestId,
+        question: pending.question,
+        options: pending.options,
+        allow_custom: pending.allow_custom,
+        timeout_ms: pending.timeout_ms,
+      },
+    });
+  }
+}
+
+/**
+ * Drop every pending AskUser request, resolving each with a recoverable error.
+ *
+ * Called when the daemon (chat) channel disconnects: the daemon that issued the
+ * questions is gone, so the asks are unanswerable and MUST NOT be resurrected by
+ * a later sidebar-reconnect replayPendingAsks(). Clearing the map here (and the
+ * per-request timeouts) closes that gap (I1).
+ */
+function clearPendingAskUserRequests() {
+  for (const pending of pendingAskUserRequests.values()) {
+    clearTimeout(pending.timeoutId);
+    try {
+      pending.resolve({
+        success: false,
+        error: { code: 8001, message: 'Agent disconnected before answer', recoverable: true },
+      });
+    } catch (_e) {}
+  }
+  pendingAskUserRequests.clear();
 }
 
 // =============================================================================
@@ -7115,6 +7182,10 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (msgType === MessageTypes.PING) {
     sendResponse({ type: MessageTypes.PONG, payload: { timestamp: message.payload?.timestamp } });
     channelManager.broadcastConnectionStatus();
+    // The sidebar pings once on (re)load — its reliable "I'm back and listening"
+    // signal. Replay any AskUser questions broadcast while it was closed so a
+    // restore-from-avatar shows the pending question instead of an empty sidebar (C2).
+    replayPendingAsks();
     return;
   }
 
