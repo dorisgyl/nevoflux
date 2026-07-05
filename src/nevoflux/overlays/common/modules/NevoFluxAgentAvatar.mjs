@@ -53,9 +53,13 @@ export const NevoFluxAgentAvatar = {
 
     // Restore persisted position (Services is a chrome global — no import needed).
     try {
-      const x = Services.prefs.getIntPref(PREF_X, -1);
-      const y = Services.prefs.getIntPref(PREF_Y, -1);
+      let x = Services.prefs.getIntPref(PREF_X, -1);
+      let y = Services.prefs.getIntPref(PREF_Y, -1);
       if (x >= 0 && y >= 0) {
+        // Clamp to the current viewport so a position saved on a larger window
+        // (or another monitor) can't restore the avatar fully off-screen (I3).
+        x = Math.max(0, Math.min(x, window.innerWidth - 48));
+        y = Math.max(0, Math.min(y, window.innerHeight - 48));
         el.style.left = `${x}px`;
         el.style.top = `${y}px`;
         el.style.right = 'auto';
@@ -84,8 +88,10 @@ export const NevoFluxAgentAvatar = {
 
     el.addEventListener('pointermove', (e) => {
       if (!dragging) return;
-      const x = Math.max(0, e.clientX - ox);
-      const y = Math.max(0, e.clientY - oy);
+      // Clamp to the viewport (floor AND ceiling) so a drag can't park the
+      // avatar off-screen where it could never be clicked again (I3).
+      const x = Math.max(0, Math.min(e.clientX - ox, window.innerWidth - 48));
+      const y = Math.max(0, Math.min(e.clientY - oy, window.innerHeight - 48));
       el.style.left = `${x}px`;
       el.style.top = `${y}px`;
       el.style.right = 'auto';

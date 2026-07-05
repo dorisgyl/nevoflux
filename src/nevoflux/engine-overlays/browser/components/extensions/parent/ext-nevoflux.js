@@ -2348,21 +2348,31 @@ this.nevoflux = class extends ExtensionAPI {
 
         // ========== Agent Avatar (floating minimized indicator) ==========
 
+        // Avatar state is global, so fan these out to EVERY browser window
+        // rather than only the most-recent one — otherwise a state push or
+        // bubble can land on a hidden window while the visible one goes stale
+        // when 2+ windows are open (I2).
         async setAgentStatus(state) {
-          const win = Services.wm.getMostRecentWindow('navigator:browser');
-          win?.NevoFluxAgentAvatar?.setState(state);
+          const wins = Services.wm.getEnumerator('navigator:browser');
+          while (wins.hasMoreElements()) {
+            wins.getNext()?.NevoFluxAgentAvatar?.setState(state);
+          }
           return { success: true };
         },
 
         async showAgentAvatar() {
-          const win = Services.wm.getMostRecentWindow('navigator:browser');
-          win?.NevoFluxAgentAvatar?.show();
+          const wins = Services.wm.getEnumerator('navigator:browser');
+          while (wins.hasMoreElements()) {
+            wins.getNext()?.NevoFluxAgentAvatar?.show();
+          }
           return { success: true };
         },
 
         async hideAgentAvatar() {
-          const win = Services.wm.getMostRecentWindow('navigator:browser');
-          win?.NevoFluxAgentAvatar?.hide();
+          const wins = Services.wm.getEnumerator('navigator:browser');
+          while (wins.hasMoreElements()) {
+            wins.getNext()?.NevoFluxAgentAvatar?.hide();
+          }
           return { success: true };
         },
 
