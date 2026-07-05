@@ -1827,15 +1827,32 @@ const AvatarController = {
 
   /**
    * Resolve the user's Identity avatar (nested key `identity.avatar` inside the
-   * `config:settings` ContentStore entry) by asking the daemon for that entry.
+   * `config:settings` ContentStore entry).
    *
-   * Uses the same pendingSystemCommands correlation as bg:open_artifact — a
-   * targeted content_store.load with request_id bypasses the generic hydration
-   * intercept (it resolves the pending command and returns first). Resolves to
-   * '' on not-connected / timeout / missing so callers get the CSS logo fallback.
+   * Strategy — mirror first, daemon fallback:
+   * 1. Read from the parent-process ContentStore mirror via browser.nevoflux.contentStoreGet.
+   *    The mirror is updated IMMEDIATELY when the settings page saves (contentStore:set actor),
+   *    so it is always at least as fresh as the daemon's SQLite row and needs no round-trip.
+   * 2. If the mirror has no entry (e.g. first boot before hydration completes) AND the daemon
+   *    channel is open, fall back to a targeted content_store.load with request_id correlation.
+   *
+   * Resolves to '' on not-connected / timeout / missing so callers get the CSS logo fallback.
    */
   async resolveIdentityAvatar() {
-    if (!channelManager.connectionStatus.chat) return '';
+    // Step 1: parent-process ContentStore mirror — always fresh, no daemon round-trip.
+    try {
+      const settings = await browser.nevoflux.contentStoreGet('config:settings').catch(() => null);
+      const avatar = settings?.identity?.avatar;
+      if (typeof avatar === 'string' && avatar) return avatar;
+    } catch (_e) {
+      // mirror unavailable — fall through to daemon
+    }
+
+    // Step 2: daemon fallback (for first-boot before hydration or when mirror is empty).
+    if (!channelManager.connectionStatus.chat) {
+      console.debug('[NevoFlux] identity avatar unresolved: mirror-empty+not-connected');
+      return '';
+    }
     const reqId = `cs_load_avatar_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     try {
       const response = await new Promise((resolve) => {
@@ -1864,8 +1881,11 @@ const AvatarController = {
       const entries = response?.data?.entries || [];
       const entry = entries.find((e) => e.key === 'config:settings');
       const avatar = entry?.value?.identity?.avatar;
-      return typeof avatar === 'string' ? avatar : '';
+      if (typeof avatar === 'string' && avatar) return avatar;
+      console.debug('[NevoFlux] identity avatar unresolved: mirror-empty+no-entry');
+      return '';
     } catch (_e) {
+      console.debug('[NevoFlux] identity avatar unresolved: mirror-empty+timeout');
       return '';
     }
   },

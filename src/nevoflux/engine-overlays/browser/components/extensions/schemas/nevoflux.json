@@ -1652,6 +1652,16 @@
         "returns": { "type": "object", "additionalProperties": true }
       },
       {
+        "name": "contentStoreGet",
+        "type": "function",
+        "async": "promise",
+        "description": "Read a single key from the parent-process ContentStore mirror. Returns the stored value or null if the key is absent.",
+        "parameters": [
+          { "name": "key", "type": "string" }
+        ],
+        "returns": { "type": ["object", "null"], "additionalProperties": true }
+      },
+      {
         "name": "probe",
         "type": "function",
         "async": "promise",

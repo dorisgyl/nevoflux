@@ -2400,6 +2400,14 @@ this.nevoflux = class extends ExtensionAPI {
           return { success: true };
         },
 
+        async contentStoreGet(key) {
+          const { NevofluxContentStore } = ChromeUtils.importESModule(
+            'resource:///modules/NevofluxContentStore.sys.mjs'
+          );
+          const value = NevofluxContentStore.get(String(key));
+          return value === undefined ? null : value;
+        },
+
         onBridgeRequest: new EventManager({
           context,
           module: 'nevoflux',
