@@ -11,8 +11,8 @@
 //! - `bg:get_tab_context` - Get current tab context
 
 use crate::messaging::bridge::*;
-use shared_protocol::{*, chat::TabReference};
-use wasm_bindgen_futures::JsFuture;
+use shared_protocol::{chat::TabReference, *};
+use wasm_bindgen_futures::{spawn_local, JsFuture};
 
 // ============================================
 // Background API Request Types
@@ -77,8 +77,8 @@ pub async fn send_to_agent(message: ChatMessage) -> Result<(), String> {
     tracing::info!("[Sidebar] Sending to agent: {} - {}", message_type, payload);
 
     let request = BackgroundRequest::SendToAgent { payload };
-    let js_value = to_js_value(&request)
-        .map_err(|e| format!("Serialize request error: {:?}", e))?;
+    let js_value =
+        to_js_value(&request).map_err(|e| format!("Serialize request error: {:?}", e))?;
 
     JsFuture::from(runtime_send_message(js_value))
         .await
@@ -162,7 +162,9 @@ pub async fn send_skill_command(
 }
 
 /// Send browser tool response back to agent via bg:send_to_agent
-pub async fn send_browser_tool_response(response: BrowserToolResponsePayload) -> Result<(), String> {
+pub async fn send_browser_tool_response(
+    response: BrowserToolResponsePayload,
+) -> Result<(), String> {
     let message = ChatMessage::BrowserToolResponse(response);
     send_to_agent(message).await
 }
@@ -335,7 +337,7 @@ mod loop_parser_tests {
 /// Uses system_command with "file.pick" command
 /// Returns request_id for tracking the response
 pub async fn send_pick_files_request(
-    mode: &str,  // "files", "directories", or "both"
+    mode: &str, // "files", "directories", or "both"
     multiple: bool,
     title: Option<String>,
 ) -> Result<String, String> {
@@ -587,10 +589,14 @@ pub async fn send_mcp_disconnect(name: &str) -> Result<(), String> {
 ///
 /// This sends the request to background.js which has access to
 /// browser.nevoflux.* API and can execute browser tools.
-pub async fn exec_browser_tool(request: BrowserToolRequestPayload) -> Result<BrowserToolResponsePayload, String> {
-    let bg_request = BackgroundRequest::ExecTool { payload: request.clone() };
-    let js_value = to_js_value(&bg_request)
-        .map_err(|e| format!("Serialize request error: {:?}", e))?;
+pub async fn exec_browser_tool(
+    request: BrowserToolRequestPayload,
+) -> Result<BrowserToolResponsePayload, String> {
+    let bg_request = BackgroundRequest::ExecTool {
+        payload: request.clone(),
+    };
+    let js_value =
+        to_js_value(&bg_request).map_err(|e| format!("Serialize request error: {:?}", e))?;
 
     // Use safe error handling to avoid Xray wrapper issues in Firefox extensions
     let response_js = match JsFuture::from(runtime_send_message(js_value)).await {
@@ -603,11 +609,7 @@ pub async fn exec_browser_tool(request: BrowserToolRequestPayload) -> Result<Bro
             } else if e.is_object() {
                 // Try to safely convert to string without accessing .message directly
                 e.as_string()
-                    .or_else(|| {
-                        js_sys::JSON::stringify(&e)
-                            .ok()
-                            .and_then(|s| s.as_string())
-                    })
+                    .or_else(|| js_sys::JSON::stringify(&e).ok().and_then(|s| s.as_string()))
                     .unwrap_or_else(|| "bg:exec_tool failed (object error)".to_string())
             } else {
                 "bg:exec_tool failed".to_string()
@@ -622,8 +624,8 @@ pub async fn exec_browser_tool(request: BrowserToolRequestPayload) -> Result<Bro
     }
 
     // Parse response
-    let response: ExecToolResponse = from_js_value(response_js)
-        .map_err(|e| format!("Parse exec_tool response error: {}", e))?;
+    let response: ExecToolResponse =
+        from_js_value(response_js).map_err(|e| format!("Parse exec_tool response error: {}", e))?;
 
     Ok(BrowserToolResponsePayload {
         request_id: request.request_id,
@@ -744,8 +746,7 @@ pub struct TabContextPayload {
 
 /// Send internal message to background
 pub async fn send_internal(message: InternalMessage) -> Result<(), String> {
-    let js_value = to_js_value(&message)
-        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    let js_value = to_js_value(&message).map_err(|e| format!("Serialize error: {:?}", e))?;
 
     JsFuture::from(runtime_send_message(js_value))
         .await
@@ -756,7 +757,9 @@ pub async fn send_internal(message: InternalMessage) -> Result<(), String> {
 
 /// Request tab context via bg:get_tab_context and return the response
 /// If tab_id is None, gets the active tab. If specified, gets that specific tab.
-pub async fn request_tab_context_for_tab(tab_id: Option<i32>) -> Result<Option<TabContextPayload>, String> {
+pub async fn request_tab_context_for_tab(
+    tab_id: Option<i32>,
+) -> Result<Option<TabContextPayload>, String> {
     // Build request with optional tab_id
     let request = if let Some(id) = tab_id {
         serde_json::json!({
@@ -769,8 +772,7 @@ pub async fn request_tab_context_for_tab(tab_id: Option<i32>) -> Result<Option<T
         })
     };
 
-    let js_value = to_js_value(&request)
-        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    let js_value = to_js_value(&request).map_err(|e| format!("Serialize error: {:?}", e))?;
 
     let response = JsFuture::from(runtime_send_message(js_value))
         .await
@@ -781,8 +783,8 @@ pub async fn request_tab_context_for_tab(tab_id: Option<i32>) -> Result<Option<T
         return Ok(None);
     }
 
-    let tab_context: TabContextPayload = from_js_value(response)
-        .map_err(|e| format!("Parse tab context error: {:?}", e))?;
+    let tab_context: TabContextPayload =
+        from_js_value(response).map_err(|e| format!("Parse tab context error: {:?}", e))?;
 
     Ok(Some(tab_context))
 }
@@ -805,15 +807,14 @@ pub async fn build_current_tab_ids() -> (Option<u32>, Vec<shared_protocol::TabRe
             }];
             (Some(tc.tab_id), tab_ids)
         }
-        _ => (None, vec![])
+        _ => (None, vec![]),
     }
 }
 
 /// Request connection to native agent via bg:connect
 pub async fn request_connect() -> Result<(), String> {
     let request = BackgroundRequest::Connect;
-    let js_value = to_js_value(&request)
-        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    let js_value = to_js_value(&request).map_err(|e| format!("Serialize error: {:?}", e))?;
 
     JsFuture::from(runtime_send_message(js_value))
         .await
@@ -833,8 +834,7 @@ pub async fn send_ping() -> Result<(), String> {
 /// Request background.js to open artifact in a new canvas tab
 pub async fn send_open_artifact(id: &str) -> Result<(), String> {
     let request = BackgroundRequest::OpenArtifact { id: id.to_string() };
-    let js_value = to_js_value(&request)
-        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    let js_value = to_js_value(&request).map_err(|e| format!("Serialize error: {:?}", e))?;
     JsFuture::from(runtime_send_message(js_value))
         .await
         .map_err(|e| format!("Send failed: {:?}", e))?;
@@ -861,7 +861,10 @@ struct CanvasPersistSaveResponse {
 /// messages signal (via mark_artifact_persistent).
 /// On not_found error: logs a console warning telling the user the canvas is gone.
 /// On other error: logs a console error.
-pub async fn send_save_to_my_canvas(canvas_id: String, messages: dioxus::prelude::Signal<Vec<crate::state::Message>>) {
+pub async fn send_save_to_my_canvas(
+    canvas_id: String,
+    messages: dioxus::prelude::Signal<Vec<crate::state::Message>>,
+) {
     use dioxus::prelude::WritableExt;
     let mut messages = messages;
     let request = serde_json::json!({
@@ -901,29 +904,48 @@ pub async fn send_save_to_my_canvas(canvas_id: String, messages: dioxus::prelude
     };
 
     if response.success {
-        tracing::info!("[Sidebar] Canvas {} saved to My Canvas (persisted_at={:?})", canvas_id, response.persisted_at);
+        tracing::info!(
+            "[Sidebar] Canvas {} saved to My Canvas (persisted_at={:?})",
+            canvas_id,
+            response.persisted_at
+        );
         // Flip local state so the pin button becomes filled immediately.
         messages.with_mut(|msgs| {
             crate::state::Message::mark_artifact_persistent(msgs, &canvas_id);
         });
     } else {
         // Inspect error code to distinguish not_found from other failures.
-        let code = response.error.as_ref()
+        let code = response
+            .error
+            .as_ref()
             .and_then(|e| e.get("code"))
-            .and_then(|c| c.as_str().map(String::from)
-                .or_else(|| c.as_i64().map(|n| n.to_string())));
-        let msg = response.error.as_ref()
+            .and_then(|c| {
+                c.as_str()
+                    .map(String::from)
+                    .or_else(|| c.as_i64().map(|n| n.to_string()))
+            });
+        let msg = response
+            .error
+            .as_ref()
             .and_then(|e| e.get("message"))
             .and_then(|m| m.as_str())
             .unwrap_or("unknown error");
 
         if code.as_deref() == Some("not_found") {
             web_sys::console::warn_1(
-                &format!("[Sidebar] Canvas {} no longer exists — cannot pin to My Canvas", canvas_id).into(),
+                &format!(
+                    "[Sidebar] Canvas {} no longer exists — cannot pin to My Canvas",
+                    canvas_id
+                )
+                .into(),
             );
         } else {
             web_sys::console::error_1(
-                &format!("[Sidebar] canvas.persist.save failed (code={:?}): {}", code, msg).into(),
+                &format!(
+                    "[Sidebar] canvas.persist.save failed (code={:?}): {}",
+                    code, msg
+                )
+                .into(),
             );
         }
     }
@@ -976,8 +998,7 @@ pub async fn send_ask_user_response(
         },
     };
 
-    let js_value = to_js_value(&message)
-        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    let js_value = to_js_value(&message).map_err(|e| format!("Serialize error: {:?}", e))?;
 
     JsFuture::from(runtime_send_message(js_value))
         .await
@@ -999,14 +1020,61 @@ pub async fn send_ask_user_cancel(request_id: &str) -> Result<(), String> {
         },
     };
 
-    let js_value = to_js_value(&message)
-        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    let js_value = to_js_value(&message).map_err(|e| format!("Serialize error: {:?}", e))?;
 
     JsFuture::from(runtime_send_message(js_value))
         .await
         .map_err(|e| format!("Send failed: {:?}", e))?;
 
     Ok(())
+}
+
+// ============================================
+// Agent Minimize (show floating avatar)
+// ============================================
+
+#[derive(serde::Serialize)]
+struct AgentMinimizeMessage {
+    r#type: &'static str,
+}
+
+/// Minimize the chat to the floating avatar: asks the background to close the
+/// sidebar and show the chrome avatar (background also starts the daemon
+/// keepalive). Mirrors `send_open_artifact`'s runtime.sendMessage pattern.
+pub async fn send_agent_minimize() -> Result<(), String> {
+    let js_value = to_js_value(&AgentMinimizeMessage {
+        r#type: "bg:agent_minimize",
+    })
+    .map_err(|e| format!("Serialize error: {:?}", e))?;
+    JsFuture::from(runtime_send_message(js_value))
+        .await
+        .map_err(|e| format!("Send failed: {:?}", e))?;
+    Ok(())
+}
+
+/// Fire-and-forget synchronous variant of [`send_agent_minimize`]. Dispatches
+/// the `bg:agent_minimize` message immediately (no await in the sync context) so
+/// the request reaches the browser IPC while the click gesture is still active,
+/// before the sidebar document is torn down by the synchronous close that
+/// follows in the click handler. The returned promise is handed to `spawn_local`
+/// purely to log a dispatch failure.
+pub fn send_agent_minimize_sync() {
+    let js_value = match to_js_value(&AgentMinimizeMessage {
+        r#type: "bg:agent_minimize",
+    }) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!("Failed to serialize agent_minimize: {:?}", e);
+            return;
+        }
+    };
+    // Hand the request to IPC synchronously; observe the result off the gesture.
+    let promise = runtime_send_message(js_value);
+    spawn_local(async move {
+        if let Err(e) = JsFuture::from(promise).await {
+            tracing::error!("Failed to dispatch agent_minimize: {:?}", e);
+        }
+    });
 }
 
 // ============================================
@@ -1038,15 +1106,14 @@ pub async fn fetch_avatar() -> Result<Option<String>, String> {
         "type": "bg:get_settings",
         "key": "settings"
     });
-    let js_value = to_js_value(&request)
-        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    let js_value = to_js_value(&request).map_err(|e| format!("Serialize error: {:?}", e))?;
 
     let response = JsFuture::from(runtime_send_message(js_value))
         .await
         .map_err(|e| format!("Fetch settings failed: {:?}", e))?;
 
-    let response_obj: serde_json::Value = from_js_value(response)
-        .map_err(|e| format!("Parse settings response error: {}", e))?;
+    let response_obj: serde_json::Value =
+        from_js_value(response).map_err(|e| format!("Parse settings response error: {}", e))?;
 
     if response_obj.get("success").and_then(|s| s.as_bool()) != Some(true) {
         return Ok(None);
@@ -1078,8 +1145,7 @@ pub async fn query_agent_status() -> Result<serde_json::Value, String> {
         "params": {}
     });
 
-    let js_value = to_js_value(&request)
-        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    let js_value = to_js_value(&request).map_err(|e| format!("Serialize error: {:?}", e))?;
 
     let response = JsFuture::from(runtime_send_message(js_value))
         .await
@@ -1089,10 +1155,14 @@ pub async fn query_agent_status() -> Result<serde_json::Value, String> {
         return Err("bg:system_command returned undefined/null".to_string());
     }
 
-    let response_obj: serde_json::Value = from_js_value(response)
-        .map_err(|e| format!("Parse status response error: {}", e))?;
+    let response_obj: serde_json::Value =
+        from_js_value(response).map_err(|e| format!("Parse status response error: {}", e))?;
 
-    if response_obj.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if response_obj
+        .get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
         Ok(response_obj.get("data").cloned().unwrap_or_default())
     } else {
         Err(response_obj
@@ -1132,8 +1202,7 @@ pub async fn save_conversation_to_kb(
         "params": params,
     });
 
-    let js_value = to_js_value(&request)
-        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    let js_value = to_js_value(&request).map_err(|e| format!("Serialize error: {:?}", e))?;
 
     let response = JsFuture::from(runtime_send_message(js_value))
         .await
@@ -1146,7 +1215,11 @@ pub async fn save_conversation_to_kb(
     let response_obj: serde_json::Value = from_js_value(response)
         .map_err(|e| format!("Parse save_conversation response error: {}", e))?;
 
-    if response_obj.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if response_obj
+        .get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
         let slug = response_obj
             .get("data")
             .and_then(|d| d.get("slug"))
@@ -1222,8 +1295,7 @@ pub async fn send_events_subscribe(
         "replay_sticky": replay_sticky,
         "buffer_size": buffer_size,
     });
-    let js_value = to_js_value(&request)
-        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    let js_value = to_js_value(&request).map_err(|e| format!("Serialize error: {:?}", e))?;
     JsFuture::from(runtime_send_message(js_value))
         .await
         .map_err(|e| format!("Send failed: {:?}", e))?;
@@ -1235,8 +1307,7 @@ pub async fn send_events_unsubscribe(subscription_id: &str) -> Result<(), String
         "type": "bg:events_unsubscribe",
         "subscription_id": subscription_id,
     });
-    let js_value = to_js_value(&request)
-        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    let js_value = to_js_value(&request).map_err(|e| format!("Serialize error: {:?}", e))?;
     JsFuture::from(runtime_send_message(js_value))
         .await
         .map_err(|e| format!("Send failed: {:?}", e))?;
@@ -1254,8 +1325,7 @@ pub async fn send_events_publish(
         "data": data,
         "delivery": delivery,
     });
-    let js_value = to_js_value(&request)
-        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    let js_value = to_js_value(&request).map_err(|e| format!("Serialize error: {:?}", e))?;
     JsFuture::from(runtime_send_message(js_value))
         .await
         .map_err(|e| format!("Send failed: {:?}", e))?;
@@ -1273,8 +1343,7 @@ pub async fn send_canvas_video_cancel(job_id: &str) -> Result<(), String> {
             "payload": { "job_id": job_id }
         }
     });
-    let js_value = to_js_value(&request)
-        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    let js_value = to_js_value(&request).map_err(|e| format!("Serialize error: {:?}", e))?;
     JsFuture::from(runtime_send_message(js_value))
         .await
         .map_err(|e| format!("Send failed: {:?}", e))?;
@@ -1292,8 +1361,7 @@ pub async fn send_canvas_video_reveal_path(path: &str, action: &str) -> Result<(
             "payload": { "path": path, "action": action }
         }
     });
-    let js_value = to_js_value(&request)
-        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    let js_value = to_js_value(&request).map_err(|e| format!("Serialize error: {:?}", e))?;
     JsFuture::from(runtime_send_message(js_value))
         .await
         .map_err(|e| format!("Send failed: {:?}", e))?;
@@ -1317,8 +1385,7 @@ pub async fn send_recording_start(goal_hint: &str) -> Result<String, String> {
         "goal_hint": if goal_hint.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(goal_hint.to_string()) },
     });
 
-    let js_value = to_js_value(&request)
-        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    let js_value = to_js_value(&request).map_err(|e| format!("Serialize error: {:?}", e))?;
 
     let response = JsFuture::from(runtime_send_message(js_value))
         .await
@@ -1331,7 +1398,11 @@ pub async fn send_recording_start(goal_hint: &str) -> Result<String, String> {
     let response_obj: serde_json::Value = from_js_value(response)
         .map_err(|e| format!("Parse recording_start response error: {}", e))?;
 
-    if response_obj.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if response_obj
+        .get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
         let id = response_obj
             .get("recording_id")
             .and_then(|v| v.as_str())
@@ -1357,8 +1428,7 @@ pub async fn send_recording_stop() -> Result<String, String> {
         "type": "bg:recording_stop",
     });
 
-    let js_value = to_js_value(&request)
-        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    let js_value = to_js_value(&request).map_err(|e| format!("Serialize error: {:?}", e))?;
 
     let response = JsFuture::from(runtime_send_message(js_value))
         .await
@@ -1371,7 +1441,11 @@ pub async fn send_recording_stop() -> Result<String, String> {
     let response_obj: serde_json::Value = from_js_value(response)
         .map_err(|e| format!("Parse recording_stop response error: {}", e))?;
 
-    if response_obj.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if response_obj
+        .get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
         let id = response_obj
             .get("recording_id")
             .and_then(|v| v.as_str())

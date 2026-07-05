@@ -8,6 +8,10 @@
 import { makeRecordingId } from '../content/handoff-logic.mjs';
 import { makeHeader } from '../content/recorder-logic.mjs';
 
+// Floating-avatar state machine and prompt policy (Tasks 1 & 2)
+import { createAgentStatusMachine } from './agent-status-machine.mjs';
+import { promptFor } from './avatar-prompt-policy.mjs';
+
 // Immediate debug log to verify script is loading
 console.log('[NevoFlux] Background script starting...');
 
@@ -61,6 +65,9 @@ const BackgroundAPI = {
   SIDEBAR_CLOSE: 'bg:sidebar_close',
   SIDEBAR_OPEN: 'bg:sidebar_open',
   SIDEBAR_SET_WIDTH: 'bg:sidebar_set_width',
+
+  // Floating avatar control
+  AGENT_MINIMIZE: 'bg:agent_minimize',
 
   // Tab management
   OPEN_TAB: 'bg:open_tab',
@@ -1661,6 +1668,25 @@ class ChannelManager {
       }
     }
 
+    // Feed the floating-avatar state machine.
+    // NOTE: PERMISSION_RESPONSE and ASK_USER_RESPONSE are OUTGOING (extension→daemon);
+    // they never appear here as inbound messages. ask_close is emitted from the
+    // outbound send paths instead (handleAskUserResponse and SEND_TO_AGENT case).
+    switch (message?.type) {
+      case MessageTypes.STREAM_CHUNK:
+        AvatarController.onEvent(message?.payload?.done ? 'stream_end' : 'stream_start');
+        break;
+      case MessageTypes.STREAM_END:
+        AvatarController.onEvent('stream_end');
+        break;
+      case MessageTypes.PERMISSION_REQUEST:
+      case MessageTypes.ASK_USER_REQUEST:
+        AvatarController.onEvent('ask_open');
+        break;
+      default:
+        break;
+    }
+
     // All messages go to Sidebar - Sidebar decides how to handle
     broadcastToSidebar(message);
   }
@@ -1697,7 +1723,14 @@ class ChannelManager {
           params: { prefix: '' },
         },
       });
+    } else {
+      // Daemon channel dropped — the questions it asked are now unanswerable.
+      // Drop them so a later sidebar-reconnect replayPendingAsks() can't
+      // resurrect dead asks (I1). Distinct from the sidebar-channel replay.
+      clearPendingAskUserRequests();
     }
+    // Push offline/online state to the floating avatar (if shown).
+    AvatarController.onConnection(connected);
     this.broadcastConnectionStatus();
   }
 
@@ -1738,6 +1771,174 @@ class ChannelManager {
 // =============================================================================
 
 const channelManager = new ChannelManager();
+
+// =============================================================================
+// Floating-Avatar Controller
+// =============================================================================
+
+const KEEPALIVE_MS = 10_000; // < 30s daemon idle timeout (server.rs:297)
+
+/**
+ * AvatarController manages the floating agent avatar lifecycle:
+ * - show/hide the native avatar widget
+ * - drive the Task-1 state machine from daemon message events
+ * - push state to chrome via browser.nevoflux.setAgentStatus
+ * - fire prompts via Task-2 avatar-prompt-policy (debounced)
+ * - run a <30s keepalive while shown so the daemon doesn't self-terminate
+ * - reflect the offline state on channel disconnect/reconnect
+ */
+const AvatarController = {
+  machine: createAgentStatusMachine(),
+  shown: false,
+  keepaliveTimer: null,
+  // Last-resolved Identity avatar dataURL (cached across shows; '' = branding logo).
+  _avatarImage: '',
+  // Session context cached from the last bg:agent_minimize message. Used by
+  // avatar:maximize to open the correct maximized view with the right session.
+  lastSessionContext: null,
+
+  show() {
+    if (this.shown) return;
+    this.shown = true;
+    // Do NOT reset — the machine tracks state continuously (onEvent applies even
+    // while hidden), so it already reflects working/idle/needs-you at minimize.
+    browser.nevoflux.showAgentAvatar().catch(() => {});
+    this.pushState();
+    // Push the last-known Identity avatar immediately (avoids a logo→avatar
+    // flash), then re-resolve from settings and push the fresh value. This is
+    // fire-and-forget so show() stays synchronous; any failure resolves to ''
+    // which lets the CSS branding-logo fallback apply.
+    browser.nevoflux.setAgentAvatarImage(this._avatarImage || '').catch(() => {});
+    this.resolveIdentityAvatar().then((url) => {
+      this._avatarImage = url;
+      browser.nevoflux.setAgentAvatarImage(url || '').catch(() => {});
+    });
+    this.keepaliveTimer = setInterval(() => {
+      // Keepalive: any channel message resets the daemon's 30s idle timer.
+      // A ping suffices; avatar state comes from the message stream, not this.
+      channelManager.sendToAgent({ type: 'ping', payload: { timestamp: Date.now() } });
+    }, KEEPALIVE_MS);
+  },
+
+  hide() {
+    if (!this.shown) return;
+    this.shown = false;
+    clearInterval(this.keepaliveTimer);
+    this.keepaliveTimer = null;
+    browser.nevoflux.hideAgentAvatar().catch(() => {});
+  },
+
+  /**
+   * Resolve the user's Identity avatar (nested key `identity.avatar` inside the
+   * `config:settings` ContentStore entry).
+   *
+   * Strategy — mirror first, daemon fallback:
+   * 1. Read from the parent-process ContentStore mirror via browser.nevoflux.contentStoreGet.
+   *    The mirror is updated IMMEDIATELY when the settings page saves (contentStore:set actor),
+   *    so it is always at least as fresh as the daemon's SQLite row and needs no round-trip.
+   * 2. If the mirror has no entry (e.g. first boot before hydration completes) AND the daemon
+   *    channel is open, fall back to a targeted content_store.load with request_id correlation.
+   *
+   * Resolves to '' on not-connected / timeout / missing so callers get the CSS logo fallback.
+   */
+  async resolveIdentityAvatar() {
+    // Step 1: parent-process ContentStore mirror — always fresh, no daemon round-trip.
+    try {
+      const settings = await browser.nevoflux.contentStoreGet('config:settings').catch(() => null);
+      const avatar = settings?.identity?.avatar;
+      if (typeof avatar === 'string' && avatar) return avatar;
+    } catch (_e) {
+      // mirror unavailable — fall through to daemon
+    }
+
+    // Step 2: daemon fallback (for first-boot before hydration or when mirror is empty).
+    if (!channelManager.connectionStatus.chat) {
+      console.debug('[NevoFlux] identity avatar unresolved: mirror-empty+not-connected');
+      return '';
+    }
+    const reqId = `cs_load_avatar_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    try {
+      const response = await new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          pendingSystemCommands.delete(reqId);
+          resolve(null);
+        }, 3000);
+        pendingSystemCommands.set(reqId, {
+          sendResponse: (payload) => resolve(payload),
+          timeout: timer,
+        });
+        const sent = channelManager.sendToAgent({
+          type: MessageTypes.SYSTEM_COMMAND,
+          payload: {
+            command: 'content_store.load',
+            request_id: reqId,
+            params: { prefix: 'config:settings' },
+          },
+        });
+        if (!sent) {
+          clearTimeout(timer);
+          pendingSystemCommands.delete(reqId);
+          resolve(null);
+        }
+      });
+      const entries = response?.data?.entries || [];
+      const entry = entries.find((e) => e.key === 'config:settings');
+      const avatar = entry?.value?.identity?.avatar;
+      if (typeof avatar === 'string' && avatar) return avatar;
+      console.debug('[NevoFlux] identity avatar unresolved: mirror-empty+no-entry');
+      return '';
+    } catch (_e) {
+      console.debug('[NevoFlux] identity avatar unresolved: mirror-empty+timeout');
+      return '';
+    }
+  },
+
+  onConnection(connected) {
+    // Daemon dropped: its in-flight stream/asks cannot outlive the disconnect,
+    // so wipe the machine even while hidden (it tracks state continuously). On
+    // reconnect the getState() push below then reports idle rather than a stale
+    // working/needs-you (I1).
+    if (!connected) this.machine.reset();
+    if (!this.shown) return;
+    browser.nevoflux.setAgentStatus(connected ? this.machine.getState() : 'offline')
+      .catch(() => {});
+  },
+
+  _lastPromptAt: 0,
+
+  pushState() {
+    browser.nevoflux.setAgentStatus(this.machine.getState()).catch(() => {});
+  },
+
+  async onEvent(kind) {
+    if (!this.shown) { this.machine.apply({ kind }); return; }
+    const t = this.machine.apply({ kind });
+    if (t.changed) this.pushState();
+    let focused = true;
+    try { focused = (await browser.windows.getLastFocused({})).focused; } catch (e) {}
+    const prompt = promptFor(t, focused);
+    // Debounce: swallow prompts within 1.5s of the last one (avoids spam on a
+    // fast working→idle→working burst).
+    if (prompt && Date.now() - this._lastPromptAt > 1500) {
+      this._lastPromptAt = Date.now();
+      this.fire(prompt);
+    }
+  },
+
+  fire(prompt) {
+    // Bubble always; OS notification only when unfocused.
+    browser.nevoflux.setAgentStatus(`${this.machine.getState()}|bubble:${prompt.bubble}`).catch(() => {});
+    if (prompt.os) {
+      browser.notifications.create(`nevoflux-avatar-${Date.now()}`, {
+        type: 'basic',
+        iconUrl: browser.runtime.getURL('icons/icon-48.png'),
+        title: 'NevoFlux',
+        message: prompt.bubble,
+      });
+    }
+  },
+};
+globalThis.__nf_avatar = AvatarController;
 
 // =============================================================================
 // Sidebar Communication
@@ -2639,6 +2840,52 @@ if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onBridgeRequest)
             break;
           }
         }
+
+        // ----- Avatar menu bridge requests (Task 7) -----
+
+        case 'avatar:restore': {
+          try {
+            // The avatar module already opened the sidebar DIRECTLY from chrome
+            // (SidebarController.show) within the gesture, so we must NOT call
+            // browser.sidebarAction.open() here — it fires without input context
+            // and is rejected. Just do the bookkeeping: stop the keepalive and
+            // broadcast the avatar hide.
+            AvatarController.hide();
+            result = { success: true };
+          } catch (err) {
+            result = { success: false, error: { code: -1, message: err.message } };
+          }
+          break;
+        }
+
+        case 'avatar:maximize': {
+          try {
+            // Reopen the exact session that was minimized. Fall back to empty
+            // strings when no context was cached (e.g. avatar shown by another
+            // code path), which still forces mode=maximized layout.
+            const ctx = AvatarController.lastSessionContext || { sessionId: '', targetTabId: 0 };
+            const base = browser.runtime.getURL('wasm/chat-sidebar/index.html');
+            const url = `${base}?mode=maximized&session_id=${encodeURIComponent(ctx.sessionId)}&target_tab_id=${ctx.targetTabId}&source_tab_id=${ctx.targetTabId}`;
+            await browser.tabs.create({ url });
+            AvatarController.hide();
+            result = { success: true };
+          } catch (err) {
+            result = { success: false, error: { code: -1, message: err.message } };
+          }
+          break;
+        }
+
+        case 'avatar:close': {
+          try {
+            AvatarController.hide();
+            result = { success: true };
+          } catch (err) {
+            result = { success: false, error: { code: -1, message: err.message } };
+          }
+          break;
+        }
+
+        // ----- End Avatar menu bridge requests -----
 
         default:
           result = { success: false, error: { code: -1, message: `Unknown bridge type: ${type}` } };
@@ -6179,6 +6426,11 @@ async function executeAskUser(params) {
       if (pendingAskUserRequests.has(requestId)) {
         pendingAskUserRequests.delete(requestId);
         console.log('[NevoFlux] AskUser: Timed out waiting for user response');
+        // Notify the avatar machine so it exits needs-you. Without this the
+        // open-ask count never decrements and the avatar sticks in needs-you
+        // forever (C1). Mirrors handleAskUserResponse, which fires ask_close
+        // when the user actually answers.
+        AvatarController.onEvent('ask_close');
         resolve({
           success: false,
           error: { code: 8001, message: 'User interaction timed out', recoverable: true },
@@ -6186,10 +6438,16 @@ async function executeAskUser(params) {
       }
     }, timeout_ms);
 
-    // Store pending request
+    // Store pending request. Keep the question payload alongside the resolver so
+    // replayPendingAsks() can re-broadcast it verbatim when the sidebar
+    // reconnects after being closed in minimized-to-avatar mode (C2).
     pendingAskUserRequests.set(requestId, {
       resolve,
       timeoutId,
+      question: question.trim(),
+      options,
+      allow_custom,
+      timeout_ms,
     });
 
     // Send request to sidebar
@@ -6211,6 +6469,9 @@ async function executeAskUser(params) {
  */
 function handleAskUserResponse(payload) {
   const { request_id, answer, is_custom, selected_index, cancelled } = payload;
+
+  // User has answered — avatar returns from needs-you to working/idle.
+  AvatarController.onEvent('ask_close');
 
   const pending = pendingAskUserRequests.get(request_id);
   if (!pending) {
@@ -6240,6 +6501,52 @@ function handleAskUserResponse(payload) {
       selected_index: selected_index !== undefined ? selected_index : -1,
     },
   });
+}
+
+/**
+ * Re-broadcast every still-pending AskUser question to the sidebar.
+ *
+ * `ask_user_request` is broadcast once when the tool runs; if the sidebar was
+ * closed (minimized-to-avatar mode) at that moment, the question is lost and the
+ * ask silently times out with no UI. This is called from the sidebar's on-load
+ * ping — its reliable "I'm back and listening" signal — to restore the pending
+ * question. Safe against double-delivery: entries are deleted from the map on
+ * response/timeout, so only genuinely-unanswered asks are ever replayed (C2).
+ */
+function replayPendingAsks() {
+  for (const [requestId, pending] of pendingAskUserRequests) {
+    broadcastToSidebar({
+      type: MessageTypes.ASK_USER_REQUEST,
+      payload: {
+        request_id: requestId,
+        question: pending.question,
+        options: pending.options,
+        allow_custom: pending.allow_custom,
+        timeout_ms: pending.timeout_ms,
+      },
+    });
+  }
+}
+
+/**
+ * Drop every pending AskUser request, resolving each with a recoverable error.
+ *
+ * Called when the daemon (chat) channel disconnects: the daemon that issued the
+ * questions is gone, so the asks are unanswerable and MUST NOT be resurrected by
+ * a later sidebar-reconnect replayPendingAsks(). Clearing the map here (and the
+ * per-request timeouts) closes that gap (I1).
+ */
+function clearPendingAskUserRequests() {
+  for (const pending of pendingAskUserRequests.values()) {
+    clearTimeout(pending.timeoutId);
+    try {
+      pending.resolve({
+        success: false,
+        error: { code: 8001, message: 'Agent disconnected before answer', recoverable: true },
+      });
+    } catch (_e) {}
+  }
+  pendingAskUserRequests.clear();
 }
 
 // =============================================================================
@@ -6962,6 +7269,10 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (msgType === MessageTypes.PING) {
     sendResponse({ type: MessageTypes.PONG, payload: { timestamp: message.payload?.timestamp } });
     channelManager.broadcastConnectionStatus();
+    // The sidebar pings once on (re)load — its reliable "I'm back and listening"
+    // signal. Replay any AskUser questions broadcast while it was closed so a
+    // restore-from-avatar shows the pending question instead of an empty sidebar (C2).
+    replayPendingAsks();
     return;
   }
 
@@ -7048,6 +7359,12 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
               payload.payload.content = hint + '\n\n' + payload.payload.content;
             }
           }
+          // permission_response is outgoing (extension→daemon); fire ask_close so
+          // the avatar machine exits needs-you when the user answers a permission
+          // prompt (ask_user_response takes the other outgoing path via handleAskUserResponse).
+          if (payload?.type === MessageTypes.PERMISSION_RESPONSE) {
+            AvatarController.onEvent('ask_close');
+          }
           const sent = channelManager.sendToAgent(payload);
           sendResponse({ success: sent });
         } catch (e) {
@@ -7099,12 +7416,36 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
     case BackgroundAPI.SIDEBAR_OPEN:
       browser.sidebarAction
         .open()
-        .then(() => sendResponse({ success: true }))
+        .then(() => {
+          // Restoring the sidebar hides the floating avatar.
+          AvatarController.hide();
+          sendResponse({ success: true });
+        })
         .catch((err) => {
           console.warn('[NevoFlux] Failed to open sidebar:', err);
           sendResponse({ success: false, error: err.message });
         });
       return true; // Keep sendResponse valid for async
+
+    case BackgroundAPI.AGENT_MINIMIZE:
+      // The sidebar already closed ITSELF synchronously within the click gesture
+      // (header.rs try_close_sidebar_sync) to satisfy requireUserInput gating, so
+      // we must NOT call browser.sidebarAction.close() here — it would run without
+      // input context and be rejected. Just show the floating avatar. Tolerant by
+      // design: the sidebar is expected to be gone by the time this runs.
+      try {
+        // Stash the session context carried by the minimize message so that
+        // avatar:maximize can later reopen the correct view.
+        AvatarController.lastSessionContext = {
+          sessionId: message.session_id || '',
+          targetTabId: message.target_tab_id || 0,
+        };
+        AvatarController.show();
+        sendResponse({ success: true });
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+      return true;
 
     case BackgroundAPI.SIDEBAR_SET_WIDTH:
       // Fallback: try browser.nevoflux API (requires browser rebuild with new schema)

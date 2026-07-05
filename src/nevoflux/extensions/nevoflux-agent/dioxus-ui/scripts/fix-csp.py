@@ -153,6 +153,58 @@ def fix_csp(dist_dir):
     }, true); // capture phase
 })();
 
+// Minimize button click handler - MUST be synchronous to preserve user gesture.
+// Mirrors the maximize handler above: init.js owns the whole minimize flow in
+// plain JS because the extension CSP (script-src 'self' 'wasm-unsafe-eval') blocks
+// js_sys::eval, which is why the Rust try_close_sidebar_sync() close was a silent
+// no-op. Capture-phase + stopPropagation bypasses the Dioxus onclick so this runs
+// once and there is no double-send.
+(function() {
+    document.addEventListener('click', function(event) {
+        const button = event.target.closest('.minimize-btn');
+        if (!button) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const isMaximized = urlParams.get('mode') === 'maximized';
+
+        console.log('[NevoFlux] Minimize clicked - synchronous handler (maximized=' + isMaximized + ')');
+
+        // Gather session context so the background can restore the right session when
+        // the avatar Maximize button is clicked. Window globals cover sidebar mode;
+        // URL params cover the maximized-tab mode (mirroring how the maximize handler
+        // sources them in the sidebar branch above).
+        const sessionId = window.__nevoflux_session_id || urlParams.get('session_id') || '';
+        const targetTabId = window.__nevoflux_target_tab_id || parseInt(urlParams.get('target_tab_id') || '0', 10) || 0;
+
+        // Notify the background FIRST to show the floating avatar + start the daemon
+        // keepalive. sendMessage returns a Promise, but the send itself is dispatched
+        // synchronously to the browser IPC while the gesture is still active, so the
+        // message survives the imminent teardown from the close/remove below.
+        if (browser.runtime && browser.runtime.sendMessage) {
+            browser.runtime.sendMessage({ type: 'bg:agent_minimize', session_id: sessionId, target_tab_id: targetTabId }).catch(e => console.warn('[NevoFlux] minimize sendMessage failed:', e));
+        }
+
+        if (isMaximized) {
+            // Maximized tab: no sidebar involved. Close the current tab. The tabs API
+            // has no user-gesture gating, so this is safe after the async sendMessage.
+            console.log('[NevoFlux] Minimize from maximized tab - closing current tab');
+            browser.tabs.getCurrent().then(tab => {
+                if (tab && tab.id) {
+                    browser.tabs.remove(tab.id).catch(e => console.warn('[NevoFlux] close tab failed:', e));
+                }
+            }).catch(e => console.warn('[NevoFlux] get current tab failed:', e));
+        } else {
+            // Sidebar: close it (user gesture still valid since no await yet).
+            if (browser.sidebarAction && browser.sidebarAction.close) {
+                browser.sidebarAction.close().catch(e => console.warn('[NevoFlux] close failed:', e));
+            }
+        }
+    }, true); // capture phase
+})();
+
 '''
         # Only add if not already present
         if 'maximize-btn' not in js_content:

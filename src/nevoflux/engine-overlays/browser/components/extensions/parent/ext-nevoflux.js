@@ -2346,6 +2346,68 @@ this.nevoflux = class extends ExtensionAPI {
           return { success: true };
         },
 
+        // ========== Agent Avatar (floating minimized indicator) ==========
+
+        // Avatar state is global, so fan these out to EVERY browser window
+        // rather than only the most-recent one — otherwise a state push or
+        // bubble can land on a hidden window while the visible one goes stale
+        // when 2+ windows are open (I2).
+        async setAgentStatus(state) {
+          const wins = Services.wm.getEnumerator('navigator:browser');
+          while (wins.hasMoreElements()) {
+            wins.getNext()?.NevoFluxAgentAvatar?.setState(state);
+          }
+          return { success: true };
+        },
+
+        async showAgentAvatar() {
+          const wins = Services.wm.getEnumerator('navigator:browser');
+          while (wins.hasMoreElements()) {
+            wins.getNext()?.NevoFluxAgentAvatar?.show();
+          }
+          return { success: true };
+        },
+
+        async setAgentAvatarImage(url) {
+          const wins = Services.wm.getEnumerator('navigator:browser');
+          while (wins.hasMoreElements()) {
+            wins.getNext()?.NevoFluxAgentAvatar?.setImage(url);
+          }
+          return { success: true };
+        },
+
+        async hideAgentAvatar() {
+          const wins = Services.wm.getEnumerator('navigator:browser');
+          while (wins.hasMoreElements()) {
+            wins.getNext()?.NevoFluxAgentAvatar?.hide();
+          }
+          return { success: true };
+        },
+
+        async getAgentAvatarPosition() {
+          try {
+            const x = Services.prefs.getIntPref('extensions.nevoflux.avatar.x', -1);
+            const y = Services.prefs.getIntPref('extensions.nevoflux.avatar.y', -1);
+            return x < 0 || y < 0 ? null : { x, y };
+          } catch (e) {
+            return null;
+          }
+        },
+
+        async setAgentAvatarPosition(x, y) {
+          Services.prefs.setIntPref('extensions.nevoflux.avatar.x', Math.round(x));
+          Services.prefs.setIntPref('extensions.nevoflux.avatar.y', Math.round(y));
+          return { success: true };
+        },
+
+        async contentStoreGet(key) {
+          const { NevofluxContentStore } = ChromeUtils.importESModule(
+            'resource:///modules/NevofluxContentStore.sys.mjs'
+          );
+          const value = NevofluxContentStore.get(String(key));
+          return value === undefined ? null : value;
+        },
+
         onBridgeRequest: new EventManager({
           context,
           module: 'nevoflux',

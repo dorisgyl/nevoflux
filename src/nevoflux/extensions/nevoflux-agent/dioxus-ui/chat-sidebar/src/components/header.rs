@@ -4,11 +4,11 @@
 
 //! Header component
 
-use dioxus::prelude::*;
-use wasm_bindgen_futures::spawn_local;
 use crate::bindings::nevoflux_api;
 use crate::context::{use_app_context, AppContext};
 use crate::state::{Message, MessageContent, MessageRole};
+use dioxus::prelude::*;
+use wasm_bindgen_futures::spawn_local;
 
 /// Render the current conversation as a markdown transcript and derive a title.
 ///
@@ -86,15 +86,21 @@ pub fn Header() -> Element {
         }
     };
 
-    // Handle minimize: shrink sidebar to 48px rail
+    // Handle minimize: close sidebar + show floating avatar (replaces the rail).
+    //
+    // The real work is owned by the CSP-safe init.js capture-phase handler for
+    // `.minimize-btn` (injected by scripts/fix-csp.py at build time), mirroring the
+    // maximize handler. Within the click gesture that plain-JS handler dispatches
+    // `{type:'bg:agent_minimize'}` (background shows the avatar + starts the
+    // keepalive) and then calls `browser.sidebarAction.close()`. Because it runs in
+    // the capture phase and calls stopPropagation, this Dioxus onclick never fires
+    // in the built artifact — it only records intent. The previous sync send +
+    // `try_close_sidebar_sync()` (js_sys::eval) close was CSP-dead: the extension
+    // CSP (`script-src 'self' 'wasm-unsafe-eval'`) blocks eval(), so the close was a
+    // silent no-op (split-brain: sidebar stayed open with the avatar + keepalive).
     let handle_minimize = {
         move |_| {
-            tracing::info!("Minimize to rail requested");
-            spawn_local(async move {
-                if let Err(e) = crate::messaging::send_set_sidebar_width(48).await {
-                    tracing::error!("Failed to minimize sidebar: {}", e);
-                }
-            });
+            tracing::info!("Minimize to floating avatar requested");
         }
     };
 
@@ -154,12 +160,8 @@ pub fn Header() -> Element {
             kb_saving.set(true);
             kb_status.set(Some("Saving…".to_string()));
             spawn_local(async move {
-                match crate::messaging::save_conversation_to_kb(
-                    &title,
-                    &content,
-                    Some(&session_id),
-                )
-                .await
+                match crate::messaging::save_conversation_to_kb(&title, &content, Some(&session_id))
+                    .await
                 {
                     Ok(slug) => {
                         tracing::info!("Saved conversation to KB: {}", slug);
@@ -250,7 +252,7 @@ pub fn Header() -> Element {
                         aria_label: "Restore to sidebar",
                         title: "Restore to sidebar",
                         onclick: handle_restore,
-                        // Arrows pointing inward icon (restore)
+                        // Panel-right glyph — "back to sidebar"
                         svg {
                             width: "16",
                             height: "16",
@@ -260,10 +262,9 @@ pub fn Header() -> Element {
                             stroke_width: "2",
                             stroke_linecap: "round",
                             stroke_linejoin: "round",
-                            path { d: "M4 14h6v6" }
-                            path { d: "M20 10h-6V4" }
-                            path { d: "M14 10l7-7" }
-                            path { d: "M3 21l7-7" }
+                            rect { x: "3", y: "3", width: "18", height: "18", rx: "2" }
+                            line { x1: "15", y1: "3", x2: "15", y2: "21" }
+                            path { d: "M19 10l2-2-2-2" }
                         }
                     }
                 } else {
@@ -291,27 +292,23 @@ pub fn Header() -> Element {
                     }
                 }
 
-                // Minimize button (only in normal sidebar mode)
-                if !is_maximized {
-                    button {
-                        class: "header-btn minimize-btn",
-                        aria_label: "Minimize to rail",
-                        title: "Minimize to rail",
-                        onclick: handle_minimize,
-                        // Panel-right-close icon (vertical line + right chevron)
-                        svg {
-                            width: "16",
-                            height: "16",
-                            view_box: "0 0 24 24",
-                            fill: "none",
-                            stroke: "currentColor",
-                            stroke_width: "2",
-                            stroke_linecap: "round",
-                            stroke_linejoin: "round",
-                            rect { x: "3", y: "3", width: "18", height: "18", rx: "2" }
-                            line { x1: "15", y1: "3", x2: "15", y2: "21" }
-                            path { d: "M19 10l2-2-2-2" }
-                        }
+                // Minimize button (both modes) — always the last / rightmost child
+                button {
+                    class: "header-btn minimize-btn",
+                    aria_label: "Minimize to floating avatar",
+                    title: "Minimize to floating avatar",
+                    onclick: handle_minimize,
+                    // Window-minimize glyph (single bottom horizontal line)
+                    svg {
+                        width: "16",
+                        height: "16",
+                        view_box: "0 0 24 24",
+                        fill: "none",
+                        stroke: "currentColor",
+                        stroke_width: "2",
+                        stroke_linecap: "round",
+                        stroke_linejoin: "round",
+                        path { d: "M5 19h14" }
                     }
                 }
             }
@@ -343,10 +340,7 @@ async fn do_maximize(ctx: AppContext) -> Result<(), String> {
 
     let url = format!(
         "{}?mode=maximized&session_id={}&target_tab_id={}&source_tab_id={}",
-        base_path,
-        session_id,
-        target_tab_id,
-        source_tab_id
+        base_path, session_id, target_tab_id, source_tab_id
     );
 
     tracing::info!("Opening maximized view: {}", url);
@@ -366,7 +360,8 @@ async fn do_restore(ctx: AppContext) -> Result<(), String> {
     drop(maximize_state);
 
     // Get current tab ID (we're in a tab, not sidebar)
-    let current_tab = nevoflux_api::get_current_tab().await?
+    let current_tab = nevoflux_api::get_current_tab()
+        .await?
         .ok_or_else(|| "Could not get current tab".to_string())?;
     let current_tab_id = current_tab.id as i32;
 
