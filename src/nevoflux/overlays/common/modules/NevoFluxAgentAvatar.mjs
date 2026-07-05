@@ -14,7 +14,7 @@
  * uses it to distinguish a click (open menu) from a completed drag.
  *
  * Task 7: on a non-drag click, a small context menu appears with three actions:
- *   恢复 (restore), 最大化 (maximize), 关闭 (close).
+ *   Restore, Maximize, Close.
  * Actions are routed to the extension background via NevofluxBridgeRouter.
  */
 
@@ -139,7 +139,7 @@ export const NevoFluxAgentAvatar = {
 
   /**
    * Build and display the context menu near the avatar.
-   * Items: 恢复 / 最大化 / 关闭 (Chinese labels, per product decision).
+   * Items: Restore / Maximize / Close.
    */
   _openMenu() {
     this._closeMenu(); // guard against doubles
@@ -149,7 +149,7 @@ export const NevoFluxAgentAvatar = {
 
     const items = [
       {
-        label: '恢复',
+        label: 'Restore',
         handler: () => {
           // Open the sidebar DIRECTLY from chrome. Chrome APIs have no
           // requireUserInput gating, so this succeeds where the background's
@@ -166,14 +166,14 @@ export const NevoFluxAgentAvatar = {
         },
       },
       {
-        label: '最大化',
+        label: 'Maximize',
         handler: () => {
           NevofluxBridgeRouter.request('avatar:maximize', {}).catch(() => {});
           this._closeMenu();
         },
       },
       {
-        label: '关闭',
+        label: 'Close',
         handler: () => {
           const state = this._el.getAttribute('data-state');
           if (state === 'working' || state === 'needs-you') {
