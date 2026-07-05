@@ -45,9 +45,10 @@ It's OK to briefly explain terms if you're in doubt.
 Start by understanding the user's intent. The current conversation might already contain a workflow the user wants to capture (e.g., they say "turn this into a skill"). If so, extract answers from the conversation history first -- the tools used, the sequence of steps, corrections the user made, input/output formats observed. The user may need to fill the gaps, and should confirm before proceeding.
 
 > If the user would rather *show* you the workflow than describe it, you can
-> record their demonstration and turn the resulting JSONL trace into the skill.
-> You drive this yourself with the `start_recording` / `stop_recording` tools
-> (agent mode) — see the **Record & Replay** section.
+> record their demonstration and compile the resulting JSONL trace into a
+> flow package (a deterministic replay script the skill invokes via
+> `run_flow`). You drive this yourself with the `start_recording` /
+> `stop_recording` tools (agent mode) — see the **Record & Replay** section.
 
 1. What should this skill enable the agent to do?
 2. When should this skill trigger? (what user phrases/contexts)
@@ -238,23 +239,34 @@ specializations:
 2. **Confirm the variables.** The recorder marks *candidate* inputs only
    (the `input_ref` on the step lines); you present them and let the user decide
    which values truly vary and which are fixed. Secrets are never baked in —
-   they become inputs supplied at replay.
-3. **Generalize, don't transcribe.** Turn confirmed values into `{{placeholders}}`
-   and write the steps as instructions the agent carries out with browser tools
-   (re-locating elements live by their durable role + name), not a hardcoded
-   selector macro. That is what lets a recorded skill survive DOM drift.
+   they become `x-secret` params supplied at call time.
+3. **Compile, don't transcribe into prose.** The recording becomes a **flow
+   package**: a deterministic Monty python script (`replay.py`, entry
+   `run(params)`) plus a `flow.json` manifest with a params JSON Schema, saved
+   under `<skill>/flows/<name>/`. At use time the agent only extracts
+   parameters and calls `run_flow("<name>", {...})` — the script replays the
+   workflow with no LLM in the loop. The generated SKILL.md is thin: when to
+   use the flow, what each param means, the one `run_flow` call to make.
 
-Then continue into the usual draft → validate → eval loop.
+Robustness comes from two layers: the script tries the recorded **ranked
+durable selectors** in order at each step, and if a step still breaks, the
+script returns a structured handoff — the calling agent finishes the workflow
+live with browser tools and files a `report_flow_repair` suggestion, which you
+offer to fold back into the script (with the user's approval) on a later
+session.
 
-For the trace schema, the action-to-tool mapping (`browser_input`-first, plus
-the native-`select` / file-upload / submit special cases), the relocate-then-act
-pattern, and how to test replay, **load `references/record-and-replay.md`**.
+Before saving, run the flow once for real via `run_flow` with sample params
+and check the concrete end state. Then continue into the usual draft →
+validate → eval loop.
+
+For the flow package layout, the `replay.py` writing rules (Monty limits,
+selector ladder, handoff envelope), the `run_flow` result contract, and how to
+test replay, **load `references/record-and-replay.md`**.
 
 One thing worth holding in mind even before you open that file: the recorder
 strips its per-snapshot element ids (`e0`, `e1`, …), and you must keep them out
-of the skill too — they are reassigned on every snapshot, so any skill that
-pins one breaks on the next run. Carry the durable `role` + `name` + ranked
-selectors instead, and let the agent resolve a fresh id at replay.
+of the generated script too — they are reassigned on every snapshot. Carry the
+durable ranked selectors instead.
 
 ---
 
