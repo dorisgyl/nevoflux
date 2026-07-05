@@ -153,6 +153,40 @@ def fix_csp(dist_dir):
     }, true); // capture phase
 })();
 
+// Minimize button click handler - MUST be synchronous to preserve user gesture.
+// Mirrors the maximize handler above: init.js owns the whole minimize flow in
+// plain JS because the extension CSP (script-src 'self' 'wasm-unsafe-eval') blocks
+// js_sys::eval, which is why the Rust try_close_sidebar_sync() close was a silent
+// no-op. Capture-phase + stopPropagation bypasses the Dioxus onclick so this runs
+// once and there is no double-send.
+(function() {
+    document.addEventListener('click', function(event) {
+        const button = event.target.closest('.minimize-btn');
+        if (!button) return;
+
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('mode') === 'maximized') return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        console.log('[NevoFlux] Minimize clicked - synchronous handler');
+
+        // Notify the background FIRST to show the floating avatar + start the daemon
+        // keepalive. sendMessage returns a Promise, but the send itself is dispatched
+        // synchronously to the browser IPC while the gesture is still active, so the
+        // message survives the imminent teardown from the close below.
+        if (browser.runtime && browser.runtime.sendMessage) {
+            browser.runtime.sendMessage({ type: 'bg:agent_minimize' }).catch(e => console.warn('[NevoFlux] minimize sendMessage failed:', e));
+        }
+
+        // Then close the sidebar (user gesture still valid since no await yet).
+        if (browser.sidebarAction && browser.sidebarAction.close) {
+            browser.sidebarAction.close().catch(e => console.warn('[NevoFlux] close failed:', e));
+        }
+    }, true); // capture phase
+})();
+
 '''
         # Only add if not already present
         if 'maximize-btn' not in js_content:

@@ -87,21 +87,20 @@ pub fn Header() -> Element {
     };
 
     // Handle minimize: close sidebar + show floating avatar (replaces the rail).
+    //
+    // The real work is owned by the CSP-safe init.js capture-phase handler for
+    // `.minimize-btn` (injected by scripts/fix-csp.py at build time), mirroring the
+    // maximize handler. Within the click gesture that plain-JS handler dispatches
+    // `{type:'bg:agent_minimize'}` (background shows the avatar + starts the
+    // keepalive) and then calls `browser.sidebarAction.close()`. Because it runs in
+    // the capture phase and calls stopPropagation, this Dioxus onclick never fires
+    // in the built artifact — it only records intent. The previous sync send +
+    // `try_close_sidebar_sync()` (js_sys::eval) close was CSP-dead: the extension
+    // CSP (`script-src 'self' 'wasm-unsafe-eval'`) blocks eval(), so the close was a
+    // silent no-op (split-brain: sidebar stayed open with the avatar + keepalive).
     let handle_minimize = {
         move |_| {
             tracing::info!("Minimize to floating avatar requested");
-
-            // Dispatch the minimize request to the background SYNCHRONOUSLY first,
-            // so it is handed to the browser IPC while the click gesture is still
-            // active — before the sync close below tears down this document. A
-            // spawn_local-queued send would run AFTER the close and could die with
-            // the document.
-            crate::messaging::send_agent_minimize_sync();
-
-            // Then close the sidebar synchronously within the input handler (the
-            // same mechanism handle_maximize uses); executing in the click context
-            // satisfies Firefox's requireUserInput check.
-            nevoflux_api::try_close_sidebar_sync();
         }
     };
 

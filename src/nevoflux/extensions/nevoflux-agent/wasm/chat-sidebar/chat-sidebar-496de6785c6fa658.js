@@ -1,5 +1,5 @@
-import { copyTextFallback } from './snippets/chat-sidebar-1dca929d453d3a08/inline0.js';
-import { base64_to_arraybuffer } from './snippets/chat-sidebar-1dca929d453d3a08/inline1.js';
+import { base64_to_arraybuffer } from './snippets/chat-sidebar-1dca929d453d3a08/inline0.js';
+import { copyTextFallback } from './snippets/chat-sidebar-1dca929d453d3a08/inline1.js';
 import { RawInterpreter } from './snippets/dioxus-interpreter-js-c0f0333193e32f17/inline0.js';
 import { setAttributeInner } from './snippets/dioxus-interpreter-js-c0f0333193e32f17/src/js/set_attribute.js';
 import { get_select_data } from './snippets/dioxus-web-afdd4c4e5aff9d11/inline0.js';
@@ -164,7 +164,7 @@ export function serialize_mcp_message(message) {
         wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
     }
 }
-import * as import1 from "./snippets/chat-sidebar-1dca929d453d3a08/inline0.js"
+import * as import1 from "./snippets/chat-sidebar-1dca929d453d3a08/inline1.js"
 
 function __wbg_get_imports() {
     const import0 = {
@@ -1317,7 +1317,7 @@ function __wbg_get_imports() {
         __wbg_setData_c6fb07ac0e13293c: function() { return handleError(function (arg0, arg1, arg2, arg3, arg4) {
             arg0.setData(getStringFromWasm0(arg1, arg2), getStringFromWasm0(arg3, arg4));
         }, arguments); },
-        __wbg_setImageData_cb55c77dc20b31bb: function() { return handleError(function (arg0, arg1, arg2) {
+        __wbg_setImageData_e22d4c35d9023fbc: function() { return handleError(function (arg0, arg1, arg2) {
             const ret = browser.clipboard.setImageData(arg0, getStringFromWasm0(arg1, arg2));
             return ret;
         }, arguments); },
@@ -1565,32 +1565,32 @@ function __wbg_get_imports() {
             return ret;
         },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { dtor_idx: 1149, function: Function { arguments: [], shim_idx: 1150, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { dtor_idx: 1147, function: Function { arguments: [], shim_idx: 1148, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
             const ret = makeMutClosure(arg0, arg1, wasm.wasm_bindgen__closure__destroy__h55bf21c434e5e709, wasm_bindgen__convert__closures_____invoke__hc892a7f45fe62c27);
             return ret;
         },
         __wbindgen_cast_0000000000000002: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { dtor_idx: 1452, function: Function { arguments: [NamedExternref("Event")], shim_idx: 1453, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { dtor_idx: 1450, function: Function { arguments: [NamedExternref("Event")], shim_idx: 1451, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
             const ret = makeMutClosure(arg0, arg1, wasm.wasm_bindgen__closure__destroy__h74b51206126c8e6c, wasm_bindgen__convert__closures_____invoke__hef194888281f4416);
             return ret;
         },
         __wbindgen_cast_0000000000000003: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { dtor_idx: 1452, function: Function { arguments: [Ref(NamedExternref("Event"))], shim_idx: 1457, ret: Unit, inner_ret: Some(Unit) }, mutable: false }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { dtor_idx: 1450, function: Function { arguments: [Ref(NamedExternref("Event"))], shim_idx: 1455, ret: Unit, inner_ret: Some(Unit) }, mutable: false }) -> Externref`.
             const ret = makeClosure(arg0, arg1, wasm.wasm_bindgen__closure__destroy__h74b51206126c8e6c, wasm_bindgen__convert__closures________invoke__h25b31a6360e8b836);
             return ret;
         },
         __wbindgen_cast_0000000000000004: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { dtor_idx: 1452, function: Function { arguments: [], shim_idx: 1455, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { dtor_idx: 1450, function: Function { arguments: [], shim_idx: 1453, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
             const ret = makeMutClosure(arg0, arg1, wasm.wasm_bindgen__closure__destroy__h74b51206126c8e6c, wasm_bindgen__convert__closures_____invoke__h61af2394330f75e6);
             return ret;
         },
         __wbindgen_cast_0000000000000005: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { dtor_idx: 2085, function: Function { arguments: [Externref], shim_idx: 2086, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { dtor_idx: 2083, function: Function { arguments: [Externref], shim_idx: 2084, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
             const ret = makeMutClosure(arg0, arg1, wasm.wasm_bindgen__closure__destroy__h82360039e28d4450, wasm_bindgen__convert__closures_____invoke__hd9b921440b388460);
             return ret;
         },
         __wbindgen_cast_0000000000000006: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { dtor_idx: 916, function: Function { arguments: [Externref, Externref, Externref], shim_idx: 917, ret: Externref, inner_ret: Some(Externref) }, mutable: false }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { dtor_idx: 741, function: Function { arguments: [Externref, Externref, Externref], shim_idx: 742, ret: Externref, inner_ret: Some(Externref) }, mutable: false }) -> Externref`.
             const ret = makeClosure(arg0, arg1, wasm.wasm_bindgen__closure__destroy__hf86c26e3f65fe654, wasm_bindgen__convert__closures_____invoke__ha68588b891e3c9a6);
             return ret;
         },
@@ -1627,7 +1627,7 @@ function __wbg_get_imports() {
     return {
         __proto__: null,
         "./chat-sidebar_bg.js": import0,
-        "./snippets/chat-sidebar-1dca929d453d3a08/inline0.js": import1,
+        "./snippets/chat-sidebar-1dca929d453d3a08/inline1.js": import1,
     };
 }
 
