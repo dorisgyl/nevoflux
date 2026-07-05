@@ -79,7 +79,7 @@
 .nevoflux-agent-avatar__bubble {
   position: absolute; right: 56px; top: 50%; transform: translateY(-50%);
   white-space: nowrap; padding: 6px 10px; border-radius: 8px;
-  background: var(--zen-colors-secondary, #333); color: var(--zen-branding-bg, #fff);
+  background: var(--zen-colors-secondary, #333); color: var(--zen-branding-fg, #fff);
   font: 12px system-ui, sans-serif; opacity: 0; pointer-events: none;
   transition: opacity 0.15s ease;
 }
