@@ -1793,6 +1793,9 @@ const AvatarController = {
   keepaliveTimer: null,
   // Last-resolved Identity avatar dataURL (cached across shows; '' = branding logo).
   _avatarImage: '',
+  // Session context cached from the last bg:agent_minimize message. Used by
+  // avatar:maximize to open the correct maximized view with the right session.
+  lastSessionContext: null,
 
   show() {
     if (this.shown) return;
@@ -2857,9 +2860,13 @@ if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onBridgeRequest)
 
         case 'avatar:maximize': {
           try {
-            await browser.tabs.create({
-              url: browser.runtime.getURL('wasm/chat-sidebar/index.html'),
-            });
+            // Reopen the exact session that was minimized. Fall back to empty
+            // strings when no context was cached (e.g. avatar shown by another
+            // code path), which still forces mode=maximized layout.
+            const ctx = AvatarController.lastSessionContext || { sessionId: '', targetTabId: 0 };
+            const base = browser.runtime.getURL('wasm/chat-sidebar/index.html');
+            const url = `${base}?mode=maximized&session_id=${encodeURIComponent(ctx.sessionId)}&target_tab_id=${ctx.targetTabId}&source_tab_id=${ctx.targetTabId}`;
+            await browser.tabs.create({ url });
             AvatarController.hide();
             result = { success: true };
           } catch (err) {
@@ -7427,6 +7434,12 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
       // input context and be rejected. Just show the floating avatar. Tolerant by
       // design: the sidebar is expected to be gone by the time this runs.
       try {
+        // Stash the session context carried by the minimize message so that
+        // avatar:maximize can later reopen the correct view.
+        AvatarController.lastSessionContext = {
+          sessionId: message.session_id || '',
+          targetTabId: message.target_tab_id || 0,
+        };
         AvatarController.show();
         sendResponse({ success: true });
       } catch (err) {

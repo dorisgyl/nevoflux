@@ -88,12 +88,19 @@
 
         console.log('[NevoFlux] Minimize clicked - synchronous handler (maximized=' + isMaximized + ')');
 
+        // Gather session context so the background can restore the right session when
+        // the avatar Maximize button is clicked. Window globals cover sidebar mode;
+        // URL params cover the maximized-tab mode (mirroring how the maximize handler
+        // sources them in the sidebar branch above).
+        const sessionId = window.__nevoflux_session_id || urlParams.get('session_id') || '';
+        const targetTabId = window.__nevoflux_target_tab_id || parseInt(urlParams.get('target_tab_id') || '0', 10) || 0;
+
         // Notify the background FIRST to show the floating avatar + start the daemon
         // keepalive. sendMessage returns a Promise, but the send itself is dispatched
         // synchronously to the browser IPC while the gesture is still active, so the
         // message survives the imminent teardown from the close/remove below.
         if (browser.runtime && browser.runtime.sendMessage) {
-            browser.runtime.sendMessage({ type: 'bg:agent_minimize' }).catch(e => console.warn('[NevoFlux] minimize sendMessage failed:', e));
+            browser.runtime.sendMessage({ type: 'bg:agent_minimize', session_id: sessionId, target_tab_id: targetTabId }).catch(e => console.warn('[NevoFlux] minimize sendMessage failed:', e));
         }
 
         if (isMaximized) {
