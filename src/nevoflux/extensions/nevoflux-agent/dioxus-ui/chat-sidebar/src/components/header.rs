@@ -291,8 +291,8 @@ pub fn Header() -> Element {
                 if !is_maximized {
                     button {
                         class: "header-btn minimize-btn",
-                        aria_label: "Minimize to rail",
-                        title: "Minimize to rail",
+                        aria_label: "Minimize to floating avatar",
+                        title: "Minimize to floating avatar",
                         onclick: handle_minimize,
                         // Panel-right-close icon (vertical line + right chevron)
                         svg {
