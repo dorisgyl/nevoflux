@@ -80,31 +80,42 @@
         const button = event.target.closest('.minimize-btn');
         if (!button) return;
 
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('mode') === 'maximized') return;
-
         event.preventDefault();
         event.stopPropagation();
 
-        console.log('[NevoFlux] Minimize clicked - synchronous handler');
+        const urlParams = new URLSearchParams(window.location.search);
+        const isMaximized = urlParams.get('mode') === 'maximized';
+
+        console.log('[NevoFlux] Minimize clicked - synchronous handler (maximized=' + isMaximized + ')');
 
         // Notify the background FIRST to show the floating avatar + start the daemon
         // keepalive. sendMessage returns a Promise, but the send itself is dispatched
         // synchronously to the browser IPC while the gesture is still active, so the
-        // message survives the imminent teardown from the close below.
+        // message survives the imminent teardown from the close/remove below.
         if (browser.runtime && browser.runtime.sendMessage) {
             browser.runtime.sendMessage({ type: 'bg:agent_minimize' }).catch(e => console.warn('[NevoFlux] minimize sendMessage failed:', e));
         }
 
-        // Then close the sidebar (user gesture still valid since no await yet).
-        if (browser.sidebarAction && browser.sidebarAction.close) {
-            browser.sidebarAction.close().catch(e => console.warn('[NevoFlux] close failed:', e));
+        if (isMaximized) {
+            // Maximized tab: no sidebar involved. Close the current tab. The tabs API
+            // has no user-gesture gating, so this is safe after the async sendMessage.
+            console.log('[NevoFlux] Minimize from maximized tab - closing current tab');
+            browser.tabs.getCurrent().then(tab => {
+                if (tab && tab.id) {
+                    browser.tabs.remove(tab.id).catch(e => console.warn('[NevoFlux] close tab failed:', e));
+                }
+            }).catch(e => console.warn('[NevoFlux] get current tab failed:', e));
+        } else {
+            // Sidebar: close it (user gesture still valid since no await yet).
+            if (browser.sidebarAction && browser.sidebarAction.close) {
+                browser.sidebarAction.close().catch(e => console.warn('[NevoFlux] close failed:', e));
+            }
         }
     }, true); // capture phase
 })();
 
-import init, * as bindings from './chat-sidebar-496de6785c6fa658.js';
-const wasm = await init({ module_or_path: './chat-sidebar-496de6785c6fa658_bg.wasm' });
+import init, * as bindings from './chat-sidebar-d98b2a20c4974110.js';
+const wasm = await init({ module_or_path: './chat-sidebar-d98b2a20c4974110_bg.wasm' });
 
 
 window.wasmBindings = bindings;

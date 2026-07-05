@@ -252,7 +252,7 @@ pub fn Header() -> Element {
                         aria_label: "Restore to sidebar",
                         title: "Restore to sidebar",
                         onclick: handle_restore,
-                        // Arrows pointing inward icon (restore)
+                        // Panel-right glyph — "back to sidebar"
                         svg {
                             width: "16",
                             height: "16",
@@ -262,10 +262,9 @@ pub fn Header() -> Element {
                             stroke_width: "2",
                             stroke_linecap: "round",
                             stroke_linejoin: "round",
-                            path { d: "M4 14h6v6" }
-                            path { d: "M20 10h-6V4" }
-                            path { d: "M14 10l7-7" }
-                            path { d: "M3 21l7-7" }
+                            rect { x: "3", y: "3", width: "18", height: "18", rx: "2" }
+                            line { x1: "15", y1: "3", x2: "15", y2: "21" }
+                            path { d: "M19 10l2-2-2-2" }
                         }
                     }
                 } else {
@@ -293,27 +292,23 @@ pub fn Header() -> Element {
                     }
                 }
 
-                // Minimize button (only in normal sidebar mode)
-                if !is_maximized {
-                    button {
-                        class: "header-btn minimize-btn",
-                        aria_label: "Minimize to floating avatar",
-                        title: "Minimize to floating avatar",
-                        onclick: handle_minimize,
-                        // Panel-right-close icon (vertical line + right chevron)
-                        svg {
-                            width: "16",
-                            height: "16",
-                            view_box: "0 0 24 24",
-                            fill: "none",
-                            stroke: "currentColor",
-                            stroke_width: "2",
-                            stroke_linecap: "round",
-                            stroke_linejoin: "round",
-                            rect { x: "3", y: "3", width: "18", height: "18", rx: "2" }
-                            line { x1: "15", y1: "3", x2: "15", y2: "21" }
-                            path { d: "M19 10l2-2-2-2" }
-                        }
+                // Minimize button (both modes) — always the last / rightmost child
+                button {
+                    class: "header-btn minimize-btn",
+                    aria_label: "Minimize to floating avatar",
+                    title: "Minimize to floating avatar",
+                    onclick: handle_minimize,
+                    // Window-minimize glyph (single bottom horizontal line)
+                    svg {
+                        width: "16",
+                        height: "16",
+                        view_box: "0 0 24 24",
+                        fill: "none",
+                        stroke: "currentColor",
+                        stroke_width: "2",
+                        stroke_linecap: "round",
+                        stroke_linejoin: "round",
+                        path { d: "M5 19h14" }
                     }
                 }
             }
