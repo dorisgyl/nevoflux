@@ -4,11 +4,11 @@
 
 //! Header component
 
-use dioxus::prelude::*;
-use wasm_bindgen_futures::spawn_local;
 use crate::bindings::nevoflux_api;
 use crate::context::{use_app_context, AppContext};
 use crate::state::{Message, MessageContent, MessageRole};
+use dioxus::prelude::*;
+use wasm_bindgen_futures::spawn_local;
 
 /// Render the current conversation as a markdown transcript and derive a title.
 ///
@@ -86,13 +86,13 @@ pub fn Header() -> Element {
         }
     };
 
-    // Handle minimize: shrink sidebar to 48px rail
+    // Handle minimize: close sidebar + show floating avatar (replaces the rail).
     let handle_minimize = {
         move |_| {
-            tracing::info!("Minimize to rail requested");
+            tracing::info!("Minimize to floating avatar requested");
             spawn_local(async move {
-                if let Err(e) = crate::messaging::send_set_sidebar_width(48).await {
-                    tracing::error!("Failed to minimize sidebar: {}", e);
+                if let Err(e) = crate::messaging::send_agent_minimize().await {
+                    tracing::error!("Failed to minimize to avatar: {}", e);
                 }
             });
         }
@@ -154,12 +154,8 @@ pub fn Header() -> Element {
             kb_saving.set(true);
             kb_status.set(Some("Saving…".to_string()));
             spawn_local(async move {
-                match crate::messaging::save_conversation_to_kb(
-                    &title,
-                    &content,
-                    Some(&session_id),
-                )
-                .await
+                match crate::messaging::save_conversation_to_kb(&title, &content, Some(&session_id))
+                    .await
                 {
                     Ok(slug) => {
                         tracing::info!("Saved conversation to KB: {}", slug);
@@ -343,10 +339,7 @@ async fn do_maximize(ctx: AppContext) -> Result<(), String> {
 
     let url = format!(
         "{}?mode=maximized&session_id={}&target_tab_id={}&source_tab_id={}",
-        base_path,
-        session_id,
-        target_tab_id,
-        source_tab_id
+        base_path, session_id, target_tab_id, source_tab_id
     );
 
     tracing::info!("Opening maximized view: {}", url);
@@ -366,7 +359,8 @@ async fn do_restore(ctx: AppContext) -> Result<(), String> {
     drop(maximize_state);
 
     // Get current tab ID (we're in a tab, not sidebar)
-    let current_tab = nevoflux_api::get_current_tab().await?
+    let current_tab = nevoflux_api::get_current_tab()
+        .await?
         .ok_or_else(|| "Could not get current tab".to_string())?;
     let current_tab_id = current_tab.id as i32;
 
