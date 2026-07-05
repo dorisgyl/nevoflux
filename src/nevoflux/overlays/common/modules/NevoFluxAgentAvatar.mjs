@@ -32,6 +32,7 @@ export const NevoFluxAgentAvatar = {
   _wasDrag: false,
   _menu: null,
   _outsideClickHandler: null,
+  _bubbleTimer: null,
 
   _ensure() {
     if (this._el && this._el.isConnected) return this._el;
@@ -221,10 +222,27 @@ export const NevoFluxAgentAvatar = {
 
   setState(raw) {
     const el = this._ensure();
-    const state = String(raw || 'idle').split('|')[0];
+    const [state, bubblePart] = String(raw || 'idle').split('|');
     if (['idle', 'working', 'needs-you', 'offline'].includes(state)) {
       el.setAttribute('data-state', state);
     }
+    if (bubblePart && bubblePart.startsWith('bubble:')) {
+      this._showBubble(bubblePart.slice('bubble:'.length));
+    }
+  },
+
+  _showBubble(text) {
+    const el = this._ensure();
+    let b = el.querySelector('.nevoflux-agent-avatar__bubble');
+    if (!b) {
+      b = window.document.createElement('div');
+      b.className = 'nevoflux-agent-avatar__bubble';
+      el.appendChild(b);
+    }
+    b.textContent = text;
+    b.classList.add('visible');
+    clearTimeout(this._bubbleTimer);
+    this._bubbleTimer = setTimeout(() => b.classList.remove('visible'), 4000);
   },
 };
 
