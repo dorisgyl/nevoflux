@@ -12,7 +12,7 @@
 
 use crate::messaging::bridge::*;
 use shared_protocol::{chat::TabReference, *};
-use wasm_bindgen_futures::JsFuture;
+use wasm_bindgen_futures::{spawn_local, JsFuture};
 
 // ============================================
 // Background API Request Types
@@ -1050,6 +1050,31 @@ pub async fn send_agent_minimize() -> Result<(), String> {
         .await
         .map_err(|e| format!("Send failed: {:?}", e))?;
     Ok(())
+}
+
+/// Fire-and-forget synchronous variant of [`send_agent_minimize`]. Dispatches
+/// the `bg:agent_minimize` message immediately (no await in the sync context) so
+/// the request reaches the browser IPC while the click gesture is still active,
+/// before the sidebar document is torn down by the synchronous close that
+/// follows in the click handler. The returned promise is handed to `spawn_local`
+/// purely to log a dispatch failure.
+pub fn send_agent_minimize_sync() {
+    let js_value = match to_js_value(&AgentMinimizeMessage {
+        r#type: "bg:agent_minimize",
+    }) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!("Failed to serialize agent_minimize: {:?}", e);
+            return;
+        }
+    };
+    // Hand the request to IPC synchronously; observe the result off the gesture.
+    let promise = runtime_send_message(js_value);
+    spawn_local(async move {
+        if let Err(e) = JsFuture::from(promise).await {
+            tracing::error!("Failed to dispatch agent_minimize: {:?}", e);
+        }
+    });
 }
 
 // ============================================

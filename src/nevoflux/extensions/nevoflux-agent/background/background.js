@@ -7341,10 +7341,17 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
       return true; // Keep sendResponse valid for async
 
     case BackgroundAPI.AGENT_MINIMIZE:
-      browser.sidebarAction
-        .close()
-        .then(() => { AvatarController.show(); sendResponse({ success: true }); })
-        .catch((err) => sendResponse({ success: false, error: err.message }));
+      // The sidebar already closed ITSELF synchronously within the click gesture
+      // (header.rs try_close_sidebar_sync) to satisfy requireUserInput gating, so
+      // we must NOT call browser.sidebarAction.close() here — it would run without
+      // input context and be rejected. Just show the floating avatar. Tolerant by
+      // design: the sidebar is expected to be gone by the time this runs.
+      try {
+        AvatarController.show();
+        sendResponse({ success: true });
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
       return true;
 
     case BackgroundAPI.SIDEBAR_SET_WIDTH:

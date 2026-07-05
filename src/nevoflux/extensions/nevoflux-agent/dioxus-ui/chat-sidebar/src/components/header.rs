@@ -90,11 +90,18 @@ pub fn Header() -> Element {
     let handle_minimize = {
         move |_| {
             tracing::info!("Minimize to floating avatar requested");
-            spawn_local(async move {
-                if let Err(e) = crate::messaging::send_agent_minimize().await {
-                    tracing::error!("Failed to minimize to avatar: {}", e);
-                }
-            });
+
+            // Dispatch the minimize request to the background SYNCHRONOUSLY first,
+            // so it is handed to the browser IPC while the click gesture is still
+            // active — before the sync close below tears down this document. A
+            // spawn_local-queued send would run AFTER the close and could die with
+            // the document.
+            crate::messaging::send_agent_minimize_sync();
+
+            // Then close the sidebar synchronously within the input handler (the
+            // same mechanism handle_maximize uses); executing in the click context
+            // satisfies Firefox's requireUserInput check.
+            nevoflux_api::try_close_sidebar_sync();
         }
     };
 
