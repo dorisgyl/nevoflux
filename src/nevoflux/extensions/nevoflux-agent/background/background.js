@@ -1791,6 +1791,8 @@ const AvatarController = {
   machine: createAgentStatusMachine(),
   shown: false,
   keepaliveTimer: null,
+  // Last-resolved Identity avatar dataURL (cached across shows; '' = branding logo).
+  _avatarImage: '',
 
   show() {
     if (this.shown) return;
@@ -1799,6 +1801,15 @@ const AvatarController = {
     // while hidden), so it already reflects working/idle/needs-you at minimize.
     browser.nevoflux.showAgentAvatar().catch(() => {});
     this.pushState();
+    // Push the last-known Identity avatar immediately (avoids a logo→avatar
+    // flash), then re-resolve from settings and push the fresh value. This is
+    // fire-and-forget so show() stays synchronous; any failure resolves to ''
+    // which lets the CSS branding-logo fallback apply.
+    browser.nevoflux.setAgentAvatarImage(this._avatarImage || '').catch(() => {});
+    this.resolveIdentityAvatar().then((url) => {
+      this._avatarImage = url;
+      browser.nevoflux.setAgentAvatarImage(url || '').catch(() => {});
+    });
     this.keepaliveTimer = setInterval(() => {
       // Keepalive: any channel message resets the daemon's 30s idle timer.
       // A ping suffices; avatar state comes from the message stream, not this.
@@ -1812,6 +1823,51 @@ const AvatarController = {
     clearInterval(this.keepaliveTimer);
     this.keepaliveTimer = null;
     browser.nevoflux.hideAgentAvatar().catch(() => {});
+  },
+
+  /**
+   * Resolve the user's Identity avatar (nested key `identity.avatar` inside the
+   * `config:settings` ContentStore entry) by asking the daemon for that entry.
+   *
+   * Uses the same pendingSystemCommands correlation as bg:open_artifact — a
+   * targeted content_store.load with request_id bypasses the generic hydration
+   * intercept (it resolves the pending command and returns first). Resolves to
+   * '' on not-connected / timeout / missing so callers get the CSS logo fallback.
+   */
+  async resolveIdentityAvatar() {
+    if (!channelManager.connectionStatus.chat) return '';
+    const reqId = `cs_load_avatar_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    try {
+      const response = await new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          pendingSystemCommands.delete(reqId);
+          resolve(null);
+        }, 3000);
+        pendingSystemCommands.set(reqId, {
+          sendResponse: (payload) => resolve(payload),
+          timeout: timer,
+        });
+        const sent = channelManager.sendToAgent({
+          type: MessageTypes.SYSTEM_COMMAND,
+          payload: {
+            command: 'content_store.load',
+            request_id: reqId,
+            params: { prefix: 'config:settings' },
+          },
+        });
+        if (!sent) {
+          clearTimeout(timer);
+          pendingSystemCommands.delete(reqId);
+          resolve(null);
+        }
+      });
+      const entries = response?.data?.entries || [];
+      const entry = entries.find((e) => e.key === 'config:settings');
+      const avatar = entry?.value?.identity?.avatar;
+      return typeof avatar === 'string' ? avatar : '';
+    } catch (_e) {
+      return '';
+    }
   },
 
   onConnection(connected) {

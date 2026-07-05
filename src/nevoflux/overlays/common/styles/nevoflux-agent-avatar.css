@@ -16,7 +16,9 @@
 .nevoflux-agent-avatar[hidden] { display: none; }
 .nevoflux-agent-avatar__face {
   width: 100%; height: 100%; border-radius: 50%;
-  background: center/contain no-repeat;
+  /* Default to the NevoFlux branding logo; NevoFluxAgentAvatar.setImage()
+     overrides background-image with the user's Identity avatar when set. */
+  background: url("chrome://branding/content/about-logo.png") center/contain no-repeat;
 }
 .nevoflux-agent-avatar__badge {
   position: absolute; right: -2px; top: -2px;

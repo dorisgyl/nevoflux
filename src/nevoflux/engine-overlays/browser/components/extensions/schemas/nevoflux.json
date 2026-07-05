@@ -1617,6 +1617,14 @@
         "returns": { "type": "object", "additionalProperties": true }
       },
       {
+        "name": "setAgentAvatarImage",
+        "type": "function",
+        "async": "promise",
+        "description": "Set the floating agent avatar face image (Identity avatar dataURL, or empty for the branding logo fallback).",
+        "parameters": [{ "name": "url", "type": "string" }],
+        "returns": { "type": "object", "additionalProperties": true }
+      },
+      {
         "name": "hideAgentAvatar",
         "type": "function",
         "async": "promise",

@@ -242,6 +242,27 @@ export const NevoFluxAgentAvatar = {
     if (this._el) this._el.hidden = true;
   },
 
+  /**
+   * Set the avatar face image. `url` should be the Identity avatar dataURL,
+   * or a chrome:/resource: URL. A falsy value clears the inline background so
+   * the CSS fallback (NevoFlux branding logo) applies.
+   *
+   * Defense-in-depth: this string reaches chrome DOM, so only data:/chrome:/
+   * resource: schemes are accepted — http(s)/javascript/etc. are rejected and
+   * fall back to the logo rather than being injected.
+   */
+  setImage(url) {
+    const el = this._ensure();
+    const face = el.querySelector('.nevoflux-agent-avatar__face');
+    if (!face) return;
+    if (typeof url === 'string' && url && /^(data:|chrome:|resource:)/.test(url)) {
+      face.style.backgroundImage = `url("${url}")`;
+    } else {
+      // Falsy or disallowed scheme → clear inline style so the CSS fallback applies.
+      face.style.backgroundImage = '';
+    }
+  },
+
   setState(raw) {
     const el = this._ensure();
     const [state, bubblePart] = String(raw || 'idle').split('|');

@@ -2368,6 +2368,14 @@ this.nevoflux = class extends ExtensionAPI {
           return { success: true };
         },
 
+        async setAgentAvatarImage(url) {
+          const wins = Services.wm.getEnumerator('navigator:browser');
+          while (wins.hasMoreElements()) {
+            wins.getNext()?.NevoFluxAgentAvatar?.setImage(url);
+          }
+          return { success: true };
+        },
+
         async hideAgentAvatar() {
           const wins = Services.wm.getEnumerator('navigator:browser');
           while (wins.hasMoreElements()) {
