@@ -1,8 +1,10 @@
 # Record & Replay (browser use)
 
 This file is the detailed companion to the **Record & Replay** section in
-`SKILL.md`. Read it when you are turning a browser recording into a skill, or
-when you need the trace schema and the replay tool mapping.
+`SKILL.md`. Read it when you are turning a browser recording into a flow
+package (a deterministic replay script invoked via `run_flow`), or when you
+need the trace schema, the `replay.py` writing rules, or the `run_flow`
+result contract.
 
 Scope today is **browser use only** — interactions inside web pages plus
 navigation. Full computer use (OS-level windows, native apps) is out of scope;
@@ -87,96 +89,169 @@ fallback, not a first choice.
 
 ---
 
-## From recording to skill
+## From recording to flow package
 
-This is Capture Intent, specialized for a recording.
+This is Capture Intent, specialized for a recording. The output is NOT
+natural-language replay steps — it is a **flow package**: a deterministic
+Monty python script plus a manifest, invoked at use time through the
+`run_flow` tool with LLM-extracted parameters.
 
-1. **Read the trace.** Summarize the workflow back to the user in plain language
-   from `goal_hint` + the step sequence, so they can confirm you understood the
-   demonstration.
+1. **Read the trace.** Summarize the workflow back to the user in plain
+   language from `goal_hint` + the step sequence, so they can confirm you
+   understood the demonstration.
 
 2. **Confirm the variables.** The recorder only *guesses* which values vary
    (the `input_ref` on step lines). You decide nothing on its behalf — present
    the candidates and let the user confirm which are real inputs and which are
-   fixed. A value typed once is not automatically a parameter; a fixed login URL
-   often is not. Secrets (`redacted: true`) become required inputs the user
-   supplies at replay, never baked into the skill.
+   fixed. A value typed once is not automatically a parameter; a fixed login
+   URL often is not. Secrets (`redacted: true`) become required params marked
+   `x-secret: true` in the manifest — never baked into the script or manifest.
 
-3. **Generalize, don't transcribe.** Replace confirmed variable values with
-   named placeholders (`{{query}}`, `{{file}}`). Write the steps as
-   *instructions the agent follows with browser tools*, not a fixed macro of
-   selectors. The point is a reusable skill that survives DOM drift, the same
-   way the rest of this skill-creator works — the agent re-locates elements
-   live at replay using the durable `role` + `name` you carried over.
+3. **Write the flow package** inside the skill directory:
 
-4. **Write the SKILL.md steps** using the replay patterns below.
+   ```text
+   <skill>/flows/<flow_name>/
+     replay.py      -- Monty script defining run(params)
+     flow.json      -- manifest (see below)
+     trace.jsonl    -- copy of the recording, kept for regeneration
+   ```
 
----
+   `flow.json`:
 
-## Replay step patterns
+   ```json
+   {
+     "name": "jira_ticket",
+     "description": "Create a Jira ticket (recorded flow)",
+     "version": 1,
+     "recording_id": "<from the trace header>",
+     "params_schema": {
+       "type": "object",
+       "properties": {
+         "project": { "type": "string", "description": "Jira project key" },
+         "title":   { "type": "string", "description": "ticket title" },
+         "api_token": { "type": "string", "x-secret": true }
+       },
+       "required": ["project", "title", "api_token"]
+     }
+   }
+   ```
 
-Author steps against these tools. The recorded `selectors[]` and `role`/`name`
-are what you write into the instructions so the agent can relocate live.
+   The flow `name` must be unique across the user's flows — prefix with the
+   skill name when in doubt.
 
-| Trace action | Author the step as | Notes |
-| --- | --- | --- |
-| `navigate` | `browser_navigate` | Use the recorded URL, or a `{{url}}` placeholder if it varies |
-| `click` | relocate ladder (see below) → `browser_click_by_id` | Snapshot ids are fresh each run; relocate, don't hardcode. Prefer the top durable `selectors[]` entry; fall back to `role`+`name`; narrow ambiguous matches by `text` / `landmark` |
-| `fill` / `type` | **`browser_input`** with `mode: "fill"` (replace) or `"type"` (append), `verify: true` | This is the default for all text input, including contentEditable and rich editors (X / LinkedIn / ProseMirror / Lexical / Draft / Slate). Do **not** author against `browser_fill` / `browser_type` / `*_by_id` — they are deprecated (2026-04) and silently no-op on many editors |
-| `select` (`element_kind: select`) | `browser_click` to open, then `browser_click` the option (by recorded option text) | Native `<select>` is **not** a `browser_input` target |
-| `file` (`element_kind: file`, value forced to `{{file}}`) | `browser_upload_file` | File inputs are **explicitly excluded** from `browser_input` and `browser_fill`. Always a required input; the local path is never recorded |
-| `scroll` | `browser_scroll` | Often droppable if it was just reading; keep only when it reveals a target |
+4. **Write the thin SKILL.md.** The skill body no longer contains replay
+   steps. It states when to use the flow, what each param means, and the one
+   call to make:
 
-Between steps, insert `browser_wait_for` where the trace marked `wait_after`
-(navigation after a click, interaction settling). This is what keeps replay from
-racing ahead of the page.
+   ```markdown
+   Extract `project` and `title` from the user's request, ask for `api_token`
+   if not provided, then call:
+   run_flow("jira_ticket", {"project": ..., "title": ..., "api_token": ...})
+   Follow the result's `instruction` field if the script fails.
+   ```
 
-### Relocate-then-act, every time
-
-A recorded selector is a hint, not a guarantee, and `role`+`name` is often **not
-unique** (many "Delete" rows, several "Search" boxes, paginated "Next").
-Uniqueness is settled at **generation time**: when you author a step, produce an
-identity that uniquely matched the recorded element; if even the durable
-selectors cannot make it unique, **flag it to the user** during Capture Intent
-rather than baking a fragile ordinal. At replay the agent walks this ladder on
-each interactive step:
-
-```
-browser_get_elements                                  # fresh snapshot
-# 1. try the top durable selectors[] entry (aria-label / testid / stable id / label)
-# 2. else browser_find_elements role="button" name="Sign in"
-# 3. still >1 → narrow by target.text, then target.landmark, then ordinal (last resort)
-browser_click_by_id e<fresh>                          # act on the id from THIS snapshot
-# 4. verify after acting (browser_input verify, or a post-step assertion)
-```
-
-Write the skill so the agent does this on each interactive step rather than
-trusting a stored id or a brittle CSS path.
-
-### Verification is free — use it
-
-`browser_input` reads the content back when `verify: true` (the default) and
-reports match / mismatch. Tell the skill to check that signal before moving on,
-especially on contentEditable editors where a fill can "succeed" while inserting
-nothing. This is the cheapest replay-robustness you get.
+5. **Verify before saving.** Run the flow once for real via `run_flow` with
+   sample params and check the concrete end state (URL reached, confirmation
+   text present). A flow package that has never replayed successfully is not
+   done.
 
 ---
 
-## What `browser_input` does not cover
+## Writing replay.py
 
-State these as explicit branches in the skill so it never misroutes:
+The script runs in the Monty sandbox with the browser tools bound as global
+functions — the same runtime as the headless fixed-script mode. Follow the
+conventions of `deploy/headless/examples/fixed-flow-advanced.py`, plus these
+flow-specific rules:
 
-- **Native `<select>`** — open and click the option; `browser_input` only
-  handles input / textarea / contentEditable.
-- **File inputs** — `browser_upload_file` only; the schema forbids `browser_fill`
-  and `browser_input` on them.
-- **Submit / Enter on a generic site** — `browser_input` has no submit
-  parameter, and its internal `SendKey(Enter)` only fires when a platform
-  adapter recipe matches a known host. The adapter registry is currently empty,
-  so on a generic page `browser_input` fills but does not submit. Author an
-  explicit submit step (`browser_click` on the submit control). A page that
-  submits *only* on raw Enter with no clickable control is a genuine gap — flag
-  it to the user rather than guessing.
+- **Entry point is `run(params)`** where `params` is a dict already validated
+  against `params_schema`. Never `run(task)`.
+- **Monty syntax limits:** def / if / for / while / try-except /
+  comprehensions / f-strings / lambda are fine; `import json/re/time` is
+  auto-handled. NOT supported: class, match/case, with, async/await, yield,
+  decorators, map()/filter(), sorted(key=).
+- **Tool errors are envelopes, not exceptions:** check results with
+  `isinstance(r, dict) and r.get("__tool_error")`.
+- **Thread `tab_id`:** `browser_navigate` opens a NEW, INACTIVE tab and
+  returns `{"tab_id": N}`. Pass that id into every later call.
+- **Inline the selector ladder.** The trace's `selectors[]` is ranked by
+  durability (role → aria-label → placeholder → label → testid → stable id →
+  CSS path). Carry the top candidates into the script and try them in order —
+  never a single hardcoded CSS path:
+
+  ```python
+  def _first_match(candidates, tab):
+      for sel in candidates:
+          r = browser_wait_for(selector=sel, tab_id=tab, timeout_ms=3000)
+          if not (isinstance(r, dict) and r.get("__tool_error")):
+              return sel
+      return None
+  ```
+
+  If even the durable selectors cannot uniquely identify the recorded element
+  (many "Delete" rows, several "Search" boxes), **flag it to the user** during
+  Capture Intent rather than baking a fragile ordinal.
+- **Text input:** `browser_input(selector=..., text=..., mode="fill",
+  verify=True, tab_id=...)`. `browser_fill` / `browser_type` are deprecated
+  (2026-04) and silently no-op on many editors — never generate them.
+- **Native `<select>`:** click to open, then click the option by recorded
+  text — `browser_input` only handles input / textarea / contentEditable.
+  **File inputs:** `browser_upload_file` only; the local path is always a
+  param, never recorded. **Submit:** author an explicit `browser_click` on
+  the submit control — filling does not submit on generic pages. A page that
+  submits *only* on raw Enter with no clickable control is a genuine gap —
+  flag it to the user rather than guessing.
+- **Waits:** insert `browser_wait_for` wherever the trace marked
+  `wait_after` (navigation / interaction settling). This is what keeps the
+  script from racing ahead of the page.
+- **Never let an exception escape, and never return a bare string on
+  failure.** On any failed step, return the handoff envelope so the calling
+  LLM can take over at the exact failure point:
+
+  ```python
+  return {
+      "ok": False,
+      "failed_step": 3,
+      "step_label": "click the submit button",
+      "selectors_tried": ["button[aria-label=Submit]", "form .submit"],
+      "url": current_url,
+      "tab_id": tab,
+      "error": "no selector matched",
+  }
+  ```
+
+  On success, return `{"ok": True, ...}` with whatever end-state data the
+  skill promised (confirmation URL, created record id, extracted text).
+- **No secrets and no ephemeral snapshot ids** (`e0`, `e1`, …) anywhere in
+  the script.
+
+---
+
+## The run_flow contract
+
+At use time the calling agent does exactly this:
+
+1. Extract params from the user's request per the thin SKILL.md.
+2. `run_flow(name, params)`. Four result shapes:
+   - **success** — the script's `{"ok": true, ...}` dict, passed through.
+   - **`status: invalid_params`** — fix params against the returned
+     `params_schema` and retry.
+   - **`status: script_failed`** — the script hit a broken step and returned
+     its handoff; the browser is still at the failure state.
+   - **`status: script_error`** — the script itself crashed (Monty error).
+3. On either failure shape, follow the result's `instruction`: relocate the
+   failed element live (durable selectors first, then `browser_find_elements`
+   with role+name, narrowing by text / landmark — the same relocate ladder
+   recorded skills always used), finish the remaining steps with browser
+   tools, and then call `report_flow_repair(flow, failed_step, suggestion)`
+   with what worked.
+4. `list_flows()` exists as a fallback discovery path when the skill text is
+   not in context.
+
+Repair suggestions land in the flow package's `repairs.jsonl`. On a later
+skill-creator session, check each flow package for pending repairs, show them
+to the user, and update `replay.py` only with their approval — bump
+`version` in `flow.json` when you do. No silent self-healing.
 
 ---
 
@@ -193,8 +268,13 @@ dropped at load time):
 
 ```yaml
 allowed_tools:
+  - run_flow
+  - report_flow_repair
   - browser_*
 ```
+
+(`browser_*` is still required — the LLM fallback takes over with browser
+tools when the script fails.)
 
 The same applies to `tags`, `dependencies`, and `triggers` — always lists.
 
@@ -210,7 +290,8 @@ browser tools, not switch into one partway through.
 Use the normal eval loop from `SKILL.md`. The only specialization:
 
 - Spawn the with-skill and baseline subagents in a mode that carries the
-  browser tools, since replay needs them from the first turn.
+  browser tools **and `run_flow`** (browser or agent mode), since replay needs
+  them from the first turn.
 - Good assertions for recorded skills are concrete end-states: the expected URL
   was reached, the confirmation text appeared, the record was created. Prefer
   checking the *outcome* of the workflow over asserting that a particular
@@ -218,3 +299,15 @@ Use the normal eval loop from `SKILL.md`. The only specialization:
   different path to the same result.
 - Realistic inputs, no secrets, short complete demonstrations. The same advice
   you give users about recording applies to the test prompts you write.
+
+Cases every flow package should pass before it ships:
+
+1. **Normal replay** — valid params → the script succeeds → the expected end
+   state is reached.
+2. **Param validation** — a missing required param → `status: invalid_params`
+   → the agent fixes the params and retries successfully.
+3. **Broken selector** — deliberately corrupt one selector in a scratch copy
+   of the script → `status: script_failed` handoff → the agent finishes the
+   workflow live → a record appears in `repairs.jsonl`.
+4. **No plaintext secrets** — grep the script and manifest: `x-secret` params
+   never appear as literal values anywhere in the package.
