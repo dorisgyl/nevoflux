@@ -62,3 +62,8 @@ build/signing/private_key.pem
 build/signing/private_key.p12
 
 bloat-dump.log
+
+# NevoFlux local dev scratch — ad-hoc browser profiles from smoke / site-check
+# runs and the _obj-temp/ staging dir. Local-only; never commit.
+.nevoflux-*profile*/
+_obj-temp/
