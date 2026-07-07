@@ -15,7 +15,6 @@ mod live_tool_feed;
 pub use welcome_screen::WelcomeScreen;
 pub use message_list::MessageList;
 pub use message_bubble::MessageBubble;
-pub use message_bubble::render_simple_markdown;
 pub use error_card::ErrorCard;
 pub use code_block::CodeBlock;
 pub use activity_feed::ActivityFeed;

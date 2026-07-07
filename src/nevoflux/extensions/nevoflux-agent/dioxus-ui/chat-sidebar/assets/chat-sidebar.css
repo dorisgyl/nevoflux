@@ -4683,3 +4683,69 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .loop-iter-card.status-running { animation: none; }
 }
+
+/* ============================================
+   Markdown Extras (rendered by markdown-render crate)
+   Tables come wrapped in .md-table-wrap for horizontal scroll.
+   ============================================ */
+
+.markdown-content .md-table-wrap {
+  overflow-x: auto;
+  margin: var(--nevo-space-sm) 0;
+}
+
+.markdown-content table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: var(--nevo-font-size-sm);
+}
+
+.markdown-content th,
+.markdown-content td {
+  border: 1px solid var(--nevo-border);
+  padding: 6px 10px;
+  text-align: left;
+  word-break: break-word;
+  min-width: 60px;
+}
+
+.markdown-content th {
+  background: var(--nevo-surface);
+  font-weight: 600;
+}
+
+.markdown-content blockquote {
+  margin: var(--nevo-space-sm) 0;
+  padding: var(--nevo-space-xs) var(--nevo-space-md);
+  border-left: 3px solid var(--nevo-border);
+  color: var(--nevo-text-secondary);
+}
+
+.markdown-content del {
+  color: var(--nevo-text-muted);
+}
+
+.markdown-content input[type='checkbox'][disabled] {
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+  margin: var(--nevo-space-sm) 0 var(--nevo-space-xs);
+  font-weight: 600;
+}
+
+.markdown-content h4 {
+  font-size: 15px;
+}
+
+.markdown-content h5 {
+  font-size: 14px;
+}
+
+.markdown-content h6 {
+  font-size: 13px;
+  color: var(--nevo-text-secondary);
+}

@@ -354,7 +354,7 @@ fn StreamingBubble(stream: Option<StreamingState>) -> Element {
     let has_content = stream.as_ref().is_some_and(|s| !s.content.is_empty());
     let rendered = stream
         .as_ref()
-        .map(|s| super::render_simple_markdown(&s.content))
+        .map(|s| markdown_render::render_markdown(&s.content))
         .unwrap_or_default();
 
     rsx! {

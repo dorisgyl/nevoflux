@@ -5,6 +5,7 @@
 [workspace]
 members = [
     "chat-sidebar",
+    "markdown-render",
     "shared-protocol",
 ]
 resolver = "2"

@@ -13,5 +13,9 @@
 <body>
     <div id="main"></div>
     <link data-trunk rel="rust" href="Cargo.toml" data-wasm-opt="z" />
+    <!-- Hand-maintained boot code (button handlers + theme-follow); lives in
+         wasm/chat-sidebar/ next to nf-theme.css, outside the trunk pipeline,
+         so fix-csp.sh's init.js overwrite can never clobber it. -->
+    <script type="module" src="./sidebar-boot.js"></script>
 </body>
 </html>
