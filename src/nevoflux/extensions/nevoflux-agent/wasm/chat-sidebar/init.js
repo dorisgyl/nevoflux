@@ -121,6 +121,100 @@
     }, true); // capture phase
 })();
 
+// Theme-follow: mirror Website-appearance (light/dark) and the active tab's
+// boost accent into CSS signals consumed by nf-theme.css. Progressive
+// enhancement — any failure leaves the sidebar on its built-in theme.
+(async function initThemeFollow() {
+    try {
+        if (typeof browser === 'undefined' ||
+            !browser.nevoflux ||
+            typeof browser.nevoflux.getThemeContext !== 'function') {
+            return;
+        }
+
+        const { computeThemeVars } = await import('./theme-color.mjs');
+
+        const urlParams = new URLSearchParams(window.location.search);
+        // Maximized mode: pinned to the originating tab. Sidebar mode: track
+        // the active tab of this sidebar's own window.
+        const fixedTabId = urlParams.get('mode') === 'maximized'
+            ? (parseInt(urlParams.get('target_tab_id'), 10) || null)
+            : null;
+        let windowId = null;
+        if (fixedTabId === null) {
+            windowId = (await browser.windows.getCurrent()).id;
+        }
+
+        function applyThemeVars(vars) {
+            const root = document.documentElement;
+            root.dataset.nfScheme = vars.scheme;
+            const map = {
+                '--nf-accent': vars.accent,
+                '--nf-accent-hover': vars.accentHover,
+                '--nf-accent-light': vars.accentLight,
+                '--nf-accent-lighter': vars.accentLighter,
+            };
+            for (const [prop, value] of Object.entries(map)) {
+                if (value) {
+                    root.style.setProperty(prop, value);
+                } else {
+                    root.style.removeProperty(prop);
+                }
+            }
+        }
+
+        async function currentTabId() {
+            if (fixedTabId !== null) return fixedTabId;
+            const [tab] = await browser.tabs.query({ windowId, active: true });
+            return tab ? tab.id : null;
+        }
+
+        // seq guard: only the latest in-flight refresh may apply (tab switches
+        // can outrace the async query chain).
+        let seq = 0;
+        async function refresh() {
+            const mySeq = ++seq;
+            try {
+                const tabId = await currentTabId();
+                const ctx = await browser.nevoflux.getThemeContext(tabId ?? undefined);
+                if (mySeq === seq && ctx) {
+                    applyThemeVars(computeThemeVars(ctx));
+                }
+            } catch (e) {
+                console.warn('[NevoFlux] theme refresh failed:', e);
+            }
+        }
+
+        // Debounce: boost editor sliders fire zen-boosts-update continuously.
+        let debounceTimer = null;
+        function scheduleRefresh() {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(refresh, 120);
+        }
+
+        browser.tabs.onActivated.addListener((info) => {
+            if (fixedTabId !== null ? info.tabId === fixedTabId
+                                    : info.windowId === windowId) {
+                scheduleRefresh();
+            }
+        });
+        browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+            if (!changeInfo.url) return;
+            if (fixedTabId !== null ? tabId === fixedTabId
+                                    : (tab.windowId === windowId && tab.active)) {
+                scheduleRefresh();
+            }
+        });
+        if (browser.nevoflux.onThemeContextChanged) {
+            browser.nevoflux.onThemeContextChanged.addListener(scheduleRefresh);
+        }
+
+        refresh();
+    } catch (e) {
+        console.warn('[NevoFlux] theme-follow init failed:', e);
+    }
+})();
+
 import init, * as bindings from './chat-sidebar-383f1907084d7f45.js';
 const wasm = await init({ module_or_path: './chat-sidebar-383f1907084d7f45_bg.wasm' });
 
