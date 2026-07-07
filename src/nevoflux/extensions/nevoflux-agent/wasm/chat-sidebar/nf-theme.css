@@ -1,0 +1,124 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/*
+ * Theme-follow layer for the chat sidebar.
+ * Loaded AFTER the trunk-hashed chat-sidebar css (see index.html), so its
+ * :root re-declarations win by order. Hand-maintained next to init.js —
+ * intentionally outside the trunk hash pipeline.
+ *
+ * Signals (set by init.js from browser.nevoflux.getThemeContext):
+ *   <html data-nf-scheme="light|dark">  — from Website appearance
+ *   --nf-accent / --nf-accent-hover / --nf-accent-light / --nf-accent-lighter
+ *     — from the active tab's boost (or space gradient fallback)
+ * With no script (API unavailable) nothing here changes rendering:
+ * fallback values equal the original chat-sidebar.css values.
+ */
+
+/* Accent indirection: route the existing accent variables through --nf-accent */
+:root {
+  --nevo-primary: var(--nf-accent, #1a6b6b);
+  --nevo-primary-hover: var(--nf-accent-hover, #134e4e);
+  --nevo-primary-light: var(--nf-accent-light, rgba(26, 107, 107, 0.1));
+  --nevo-primary-lighter: var(--nf-accent-lighter, rgba(26, 107, 107, 0.08));
+}
+
+:root[data-nf-scheme='light'] {
+  color-scheme: light;
+}
+
+/* Dark palette (chat-sidebar.css :root only ships light values).
+   MUST stay in sync with PALETTES.dark in theme-color.mjs — tint/contrast
+   overrides are mixed from those base values in JS. */
+:root[data-nf-scheme='dark'] {
+  color-scheme: dark;
+
+  --nevo-background: #1e2022;
+  --nevo-surface: #2a2d31;
+  --nevo-surface-hover: #33373c;
+  --nevo-surface-active: #3d4248;
+
+  --nevo-code-bg: #22272b;
+  --nevo-code-header: #2d3339;
+  --nevo-code-text: #d1d5da;
+
+  --nevo-text: #e6e8ea;
+  --nevo-text-secondary: #b4bac2;
+  --nevo-text-muted: #80868e;
+
+  --nevo-success: #4ade80;
+  --nevo-warning: #fbbf24;
+  --nevo-error: #f87171;
+  --nevo-info: #60a5fa;
+
+  --nevo-border: #3a3f45;
+
+  --nevo-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --nevo-shadow-md:
+    0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.4);
+  --nevo-shadow-lg:
+    0 10px 15px -3px rgba(0, 0, 0, 0.55), 0 4px 6px -2px rgba(0, 0, 0, 0.45);
+}
+
+/* Smooth scheme/accent switches on the main surface.
+   Boost sizeOverride → real zoom: the base sheet declares `zoom: 1
+   !important`, and this later same-importance rule wins by order. */
+body {
+  zoom: var(--nf-zoom, 1) !important;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body {
+    transition: none;
+  }
+}
+
+/*
+ * Attribute-driven ports of chat-sidebar.css's two
+ * @media (prefers-color-scheme: dark) blocks. The [data-nf-scheme] rules
+ * below beat the media-query rules via higher specificity + later order,
+ * in BOTH directions (forced dark on a light system, forced light on a
+ * dark system). The accent-tinted chip uses color-mix so it tracks
+ * --nf-accent instead of the hardcoded teal.
+ */
+:root[data-nf-scheme='dark'] .tool-chip--running {
+  background: color-mix(in srgb, var(--nevo-primary) 15%, transparent);
+}
+:root[data-nf-scheme='dark'] .tool-chip--waiting-auth {
+  background: rgba(217, 119, 6, 0.12);
+}
+:root[data-nf-scheme='dark'] .tool-chip--failed {
+  background: rgba(220, 38, 38, 0.1);
+}
+:root[data-nf-scheme='dark'] .tool-auth-overlay {
+  background: rgba(0, 0, 0, 0.6);
+}
+:root[data-nf-scheme='dark'] .tool-auth-btn--deny:hover {
+  background: rgba(220, 38, 38, 0.1);
+}
+:root[data-nf-scheme='dark'] .rail-status--active .rail-status-dot {
+  box-shadow: 0 0 6px var(--nevo-primary);
+}
+
+:root[data-nf-scheme='light'] .tool-chip--running {
+  background: var(--nevo-primary-lighter);
+}
+:root[data-nf-scheme='light'] .tool-chip--waiting-auth {
+  background: rgba(217, 119, 6, 0.08);
+}
+:root[data-nf-scheme='light'] .tool-chip--failed {
+  background: rgba(220, 38, 38, 0.06);
+}
+:root[data-nf-scheme='light'] .tool-auth-overlay {
+  background: rgba(0, 0, 0, 0.4);
+}
+:root[data-nf-scheme='light'] .tool-auth-btn--deny:hover {
+  background: rgba(220, 38, 38, 0.06);
+}
+:root[data-nf-scheme='light'] .rail-status--active .rail-status-dot {
+  box-shadow: none;
+}

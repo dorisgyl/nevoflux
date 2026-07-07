@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>NevoFlux Chat Sidebar</title>
     <link data-trunk rel="css" href="assets/chat-sidebar.css">
+    <!-- Hand-maintained theme-follow layer; lives in wasm/chat-sidebar/ next
+         to init.js, outside the trunk hash pipeline. Keep this plain link so
+         a rebuilt index.html keeps referencing it. -->
+    <link rel="stylesheet" href="nf-theme.css">
 </head>
 <body>
     <div id="main"></div>

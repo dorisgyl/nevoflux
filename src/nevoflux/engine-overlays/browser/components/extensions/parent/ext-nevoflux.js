@@ -81,6 +81,98 @@ this.nevoflux = class extends ExtensionAPI {
           }
         },
 
+        // ========== Theme Context (sidebar theme-follow) ==========
+
+        // Raw signals only — all color math lives in the extension's
+        // wasm/chat-sidebar/theme-color.mjs so it stays node-unit-testable.
+        async getThemeContext(tabId) {
+          const PREF_APPEARANCE = 'layout.css.prefers-color-scheme.content-override';
+
+          let tab = null;
+          try {
+            const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+            if (resolvedTabId != null) {
+              tab = extension.tabManager.get(resolvedTabId);
+            }
+          } catch (e) {
+            // Tab gone (closed mid-query) — fall through with window-only signals.
+          }
+
+          const win =
+            tab?.browser?.ownerGlobal ??
+            Services.wm.getMostRecentWindow('navigator:browser');
+
+          // 0 = dark, 1 = light, 2 = auto. Auto follows the chrome window's
+          // scheme (browser theme, which normally tracks the system theme).
+          let colorScheme;
+          const override = Services.prefs.getIntPref(PREF_APPEARANCE, 2);
+          if (override === 0) {
+            colorScheme = 'dark';
+          } else if (override === 1) {
+            colorScheme = 'light';
+          } else {
+            colorScheme = win?.matchMedia?.('(prefers-color-scheme: dark)')?.matches
+              ? 'dark'
+              : 'light';
+          }
+
+          // Domain: host without port, same as ZenBoostsChild#hostWithoutPort.
+          let domain = null;
+          try {
+            domain = tab?.browser?.currentURI?.host || null;
+          } catch (e) {
+            // Hostless URI (about:, data:, …) — no boost domain.
+          }
+
+          let boost = null;
+          if (domain) {
+            try {
+              const { gZenBoostsManager } = ChromeUtils.importESModule(
+                'resource:///modules/zen/boosts/ZenBoostsManager.sys.mjs'
+              );
+              // getActiveBoostId first: loadActiveBoostFromStore has a
+              // create-if-empty side effect we must not trigger from a read.
+              const activeId = gZenBoostsManager.getActiveBoostId(domain);
+              if (activeId) {
+                const active = gZenBoostsManager.loadActiveBoostFromStore(domain);
+                const data = active?.boostEntry?.boostData;
+                if (data) {
+                  // Full follow subset: invert/font/zoom apply on the page
+                  // even without enableColorBoost (see ZenBoostsChild), so
+                  // always ship the fields and let theme-color.mjs decide.
+                  boost = {
+                    enableColorBoost: !!data.enableColorBoost,
+                    autoTheme: !!data.autoTheme,
+                    dotAngleDeg: data.dotAngleDeg,
+                    saturation: data.saturation,
+                    brightness: data.brightness,
+                    contrast: data.contrast,
+                    smartInvert: !!data.smartInvert,
+                    fontFamily: data.fontFamily || '',
+                    sizeOverride: data.sizeOverride,
+                  };
+                }
+              }
+            } catch (e) {
+              // Boosts module unavailable — degrade to no accent.
+            }
+          }
+
+          let spacePrimaryRgb = null;
+          try {
+            const workspace = await win?.gZenWorkspaces?.getActiveWorkspace?.();
+            const colors = workspace?.theme?.gradientColors ?? [];
+            const primary = colors.find((c) => c?.isPrimary) ?? colors[0];
+            if (Array.isArray(primary?.c) && primary.c.length === 3) {
+              spacePrimaryRgb = [primary.c[0], primary.c[1], primary.c[2]];
+            }
+          } catch (e) {
+            // No workspace theme — sidebar falls back to its default accent.
+          }
+
+          return { colorScheme, domain, boost, spacePrimaryRgb };
+        },
+
         // ========== Data Extraction (chat mode) ==========
 
         async getText(tabId, selector) {
@@ -2440,6 +2532,36 @@ this.nevoflux = class extends ExtensionAPI {
             NevofluxBridgeRouter.setNotifyHandler(handler);
             return () => {
               NevofluxBridgeRouter.removeNotifyHandler();
+            };
+          },
+        }).api(),
+
+        onThemeContextChanged: new EventManager({
+          context,
+          module: 'nevoflux',
+          event: 'onThemeContextChanged',
+          register: (fire) => {
+            const PREF_APPEARANCE =
+              'layout.css.prefers-color-scheme.content-override';
+            // Signal-only: listeners re-query getThemeContext, so ordering
+            // and payload staleness are non-issues.
+            const TOPICS = [
+              'zen-boosts-update', // boost edited / saved / deleted
+              'zen-boosts-active-change', // boost (de)activated for a domain
+              'zen-space-gradient-update', // space gradient changed
+              'look-and-feel-changed', // system/browser theme flipped (auto mode)
+            ];
+            const observer = () => fire.async();
+            for (const topic of TOPICS) {
+              Services.obs.addObserver(observer, topic);
+            }
+            const prefObserver = () => fire.async();
+            Services.prefs.addObserver(PREF_APPEARANCE, prefObserver);
+            return () => {
+              for (const topic of TOPICS) {
+                Services.obs.removeObserver(observer, topic);
+              }
+              Services.prefs.removeObserver(PREF_APPEARANCE, prefObserver);
             };
           },
         }).api(),
