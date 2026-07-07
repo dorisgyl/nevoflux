@@ -26,10 +26,16 @@
 
 /* Show sidebar splitter for drag-to-resize.
  * Overrides opacity:0 and negative margin set in zen-sidebar.css.
- * Width override: on Windows overlay-scrollbars shrinks to 2px; use 6px everywhere. */
+ * Width override: on Windows overlay-scrollbars shrinks to 2px; use 6px everywhere.
+ * margin-inline: #tabbrowser-tabbox is a flex row with
+ * gap: --zen-element-separation, and the splitter sits between content and
+ * #sidebar-box, so its raw footprint is gap + 6px + gap. These symmetric
+ * negative margins net that back to one separation, matching the gap between
+ * the left sidebar and the viewport, while keeping the 6px grab area. */
 #zen-tabbox-wrapper #sidebar-splitter {
   opacity: 1 !important;
-  margin: 0 !important;
+  margin-block: 0 !important;
+  margin-inline: calc((var(--zen-element-separation, 8px) + 6px) / -2) !important;
   width: 6px !important;
   min-width: 6px !important;
   cursor: ew-resize !important;
