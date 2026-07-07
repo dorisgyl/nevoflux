@@ -36,6 +36,9 @@ pub use state::*;
 pub use utils::*;
 
 /// Initialize and launch the Chat Sidebar application
+/// (wasm-only: the exported `main` collides with the native test harness's
+/// entry point, which would break `cargo test` on the host target)
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(start)]
 pub fn main() {
     // Set up panic hook for better error messages in WASM
