@@ -136,12 +136,20 @@ this.nevoflux = class extends ExtensionAPI {
               if (activeId) {
                 const active = gZenBoostsManager.loadActiveBoostFromStore(domain);
                 const data = active?.boostEntry?.boostData;
-                if (data?.enableColorBoost) {
+                if (data) {
+                  // Full follow subset: invert/font/zoom apply on the page
+                  // even without enableColorBoost (see ZenBoostsChild), so
+                  // always ship the fields and let theme-color.mjs decide.
                   boost = {
+                    enableColorBoost: !!data.enableColorBoost,
                     autoTheme: !!data.autoTheme,
                     dotAngleDeg: data.dotAngleDeg,
                     saturation: data.saturation,
                     brightness: data.brightness,
+                    contrast: data.contrast,
+                    smartInvert: !!data.smartInvert,
+                    fontFamily: data.fontFamily || '',
+                    sizeOverride: data.sizeOverride,
                   };
                 }
               }

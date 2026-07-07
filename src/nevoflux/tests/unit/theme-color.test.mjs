@@ -138,6 +138,107 @@ describe('theme-color: computeThemeVars', () => {
     expect(a.accent).toBe(b.accent);
   });
 
+  it('smartInvert forces dark scheme over Website appearance', () => {
+    const v = computeThemeVars({
+      ...baseCtx,
+      colorScheme: 'light',
+      boost: { enableColorBoost: false, smartInvert: true },
+    });
+    expect(v.scheme).toBe('dark');
+  });
+
+  it('boost with enableColorBoost=false falls back to space accent but keeps font/zoom', () => {
+    const v = computeThemeVars({
+      ...baseCtx,
+      spacePrimaryRgb: [26, 107, 107],
+      boost: {
+        enableColorBoost: false,
+        smartInvert: false,
+        fontFamily: 'Comic Sans MS',
+        sizeOverride: 1.2,
+      },
+    });
+    expect(v.accentSource).toBe('space');
+    expect(v.overrides['--nevo-font-family']).toBe('Comic Sans MS');
+    expect(v.overrides['--nf-zoom']).toBe('1.2');
+    // tint/contrast are color-boost-only
+    expect(v.overrides['--nevo-background']).toBe(undefined);
+    expect(v.overrides['--nevo-text']).toBe(undefined);
+  });
+
+  it('tints surfaces toward the accent when color boost is on (light bases)', () => {
+    const v = computeThemeVars({
+      ...baseCtx,
+      boost: {
+        enableColorBoost: true,
+        autoTheme: false,
+        dotAngleDeg: 131.61,
+        saturation: 0.5,
+        brightness: 0.5,
+        contrast: 0.75,
+      },
+    });
+    // accent #53c669; bg 6% / surface 8% / hover 10% / active 12%
+    expect(v.overrides['--nevo-background']).toBe('#f5fcf6');
+    expect(v.overrides['--nevo-surface']).toBe('#e6f0eb');
+    expect(v.overrides['--nevo-surface-hover']).toBe('#d6e4de');
+    expect(v.overrides['--nevo-surface-active']).toBe('#c2d3cd');
+    // contrast 0.75 is neutral → no text/border overrides
+    expect(v.overrides['--nevo-text']).toBe(undefined);
+    expect(v.overrides['--nevo-border']).toBe(undefined);
+  });
+
+  it('contrast gain pushes text/border toward the pole (light, c=1)', () => {
+    const v = computeThemeVars({
+      ...baseCtx,
+      boost: {
+        enableColorBoost: true,
+        autoTheme: false,
+        dotAngleDeg: 131.61,
+        saturation: 0.5,
+        brightness: 0.5,
+        contrast: 1,
+      },
+    });
+    expect(v.overrides['--nevo-text']).toBe('#141b24');
+    expect(v.overrides['--nevo-text-secondary']).toBe('#353c45');
+    expect(v.overrides['--nevo-border']).toBe('#acadb0');
+  });
+
+  it('contrast loss pulls text toward mid-gray on dark bases (smartInvert + c=0.25)', () => {
+    const v = computeThemeVars({
+      ...baseCtx,
+      colorScheme: 'light',
+      boost: {
+        enableColorBoost: true,
+        autoTheme: false,
+        dotAngleDeg: 131.61,
+        saturation: 0.5,
+        brightness: 0.5,
+        contrast: 0.25,
+        smartInvert: true,
+      },
+    });
+    expect(v.scheme).toBe('dark');
+    expect(v.overrides['--nevo-text']).toBe('#ced0d1');
+    expect(v.overrides['--nevo-text-secondary']).toBe('#aaaeb5');
+    expect(v.overrides['--nevo-border']).toBe('#34393e');
+  });
+
+  it('clamps zoom to [0.5, 2] and drops no-op zoom', () => {
+    const mk = (sizeOverride) =>
+      computeThemeVars({ ...baseCtx, boost: { enableColorBoost: false, sizeOverride } });
+    expect(mk(3).overrides['--nf-zoom']).toBe('2');
+    expect(mk(0.3).overrides['--nf-zoom']).toBe('0.5');
+    expect(mk(1).overrides['--nf-zoom']).toBe(undefined);
+    expect(mk(1.005).overrides['--nf-zoom']).toBe(undefined);
+  });
+
+  it('returns empty overrides without a boost', () => {
+    const v = computeThemeVars({ ...baseCtx, spacePrimaryRgb: [26, 107, 107] });
+    expect(Object.keys(v.overrides).length).toBe(0);
+  });
+
   it('survives malformed ctx without throwing', () => {
     expect(computeThemeVars(null).scheme).toBe('light');
     expect(computeThemeVars(null).accentSource).toBe('default');

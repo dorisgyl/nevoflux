@@ -28,7 +28,9 @@
   color-scheme: light;
 }
 
-/* Dark palette (chat-sidebar.css :root only ships light values) */
+/* Dark palette (chat-sidebar.css :root only ships light values).
+   MUST stay in sync with PALETTES.dark in theme-color.mjs — tint/contrast
+   overrides are mixed from those base values in JS. */
 :root[data-nf-scheme='dark'] {
   color-scheme: dark;
 
@@ -59,8 +61,11 @@
     0 10px 15px -3px rgba(0, 0, 0, 0.55), 0 4px 6px -2px rgba(0, 0, 0, 0.45);
 }
 
-/* Smooth scheme/accent switches on the main surface */
+/* Smooth scheme/accent switches on the main surface.
+   Boost sizeOverride → real zoom: the base sheet declares `zoom: 1
+   !important`, and this later same-importance rule wins by order. */
 body {
+  zoom: var(--nf-zoom, 1) !important;
   transition:
     background-color 0.2s ease,
     color 0.2s ease;

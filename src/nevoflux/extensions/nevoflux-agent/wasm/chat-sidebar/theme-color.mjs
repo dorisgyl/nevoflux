@@ -107,6 +107,45 @@ function toHex([r, g, b]) {
   return '#' + [r, g, b].map((c) => c.toString(16).padStart(2, '0')).join('');
 }
 
+function mixRgb(a, b, t) {
+  return [0, 1, 2].map((i) => Math.round(a[i] + (b[i] - a[i]) * t));
+}
+
+function hexToRgb(hex) {
+  const h = hex.slice(1);
+  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+}
+
+/*
+ * Base palettes for tint/contrast mixing. MUST stay in sync with
+ * chat-sidebar.css :root (light) and nf-theme.css [data-nf-scheme='dark'];
+ * both files carry a matching "keep in sync with theme-color.mjs" note.
+ */
+const PALETTES = {
+  light: {
+    bg: '#ffffff',
+    surface: '#f3f4f6',
+    surfaceHover: '#e5e7eb',
+    surfaceActive: '#d1d5db',
+    text: '#1f2937',
+    textSecondary: '#4b5563',
+    border: '#e5e7eb',
+    pole: '#000000',
+  },
+  dark: {
+    bg: '#1e2022',
+    surface: '#2a2d31',
+    surfaceHover: '#33373c',
+    surfaceActive: '#3d4248',
+    text: '#e6e8ea',
+    textSecondary: '#b4bac2',
+    border: '#3a3f45',
+    pole: '#ffffff',
+  },
+};
+
+const MID_GRAY = [128, 128, 128];
+
 /**
  * Turn a raw ThemeContext (from browser.nevoflux.getThemeContext) into the
  * CSS variable values the sidebar applies. Never throws: any malformed input
@@ -116,15 +155,22 @@ function toHex([r, g, b]) {
  * (null values; nf-theme.css fallbacks keep the built-in teal).
  *
  * @param {?object} ctx - ThemeContext:
- *   { colorScheme, domain, boost: ?{autoTheme, dotAngleDeg, saturation,
- *     brightness}, spacePrimaryRgb: ?[r,g,b] }
+ *   { colorScheme, domain, boost: ?{enableColorBoost, autoTheme, dotAngleDeg,
+ *     saturation, brightness, contrast, smartInvert, fontFamily,
+ *     sizeOverride}, spacePrimaryRgb: ?[r,g,b] }
  * @returns {{scheme: string, accentSource: string, accent: ?string,
- *            accentHover: ?string, accentLight: ?string, accentLighter: ?string}}
+ *            accentHover: ?string, accentLight: ?string, accentLighter: ?string,
+ *            overrides: Object<string, string>}} overrides maps CSS custom
+ *   properties (surface tint, contrast-adjusted text/border, font, zoom) to
+ *   their inline values; consumers must remove keys absent from the map.
  */
 export function computeThemeVars(ctx) {
-  const scheme = ctx?.colorScheme === 'dark' ? 'dark' : 'light';
-
   const boost = ctx?.boost;
+  // Boost's Smart Invert (the boost editor's light/dark) wins over the
+  // Website-appearance pref while a boosted site is active.
+  const scheme =
+    boost?.smartInvert === true || ctx?.colorScheme === 'dark' ? 'dark' : 'light';
+
   const spaceRgb =
     Array.isArray(ctx?.spacePrimaryRgb) &&
     ctx.spacePrimaryRgb.length === 3 &&
@@ -137,8 +183,12 @@ export function computeThemeVars(ctx) {
   let l = null;
   let accentSource = 'default';
 
+  // enableColorBoost === false disables the accent/tint/contrast portion
+  // (undefined keeps v1 payload compatibility, where the field was implied).
+  const colorBoostOn = !!boost && boost.enableColorBoost !== false;
   const boostUsable =
-    boost && ((boost.autoTheme && spaceRgb) || Number.isFinite(boost.dotAngleDeg));
+    colorBoostOn &&
+    ((boost.autoTheme && spaceRgb) || Number.isFinite(boost.dotAngleDeg));
   if (boostUsable) {
     // Same modifiers as ZenBoostsChild.#applyBoostForPageIfAvailable:
     //   s = 1 - boostData.saturation, l = 0.1 + 0.9 * boostData.brightness
@@ -155,6 +205,52 @@ export function computeThemeVars(ctx) {
     accentSource = 'space';
   }
 
+  // Inline CSS-variable overrides for the "follow boost fully" extras.
+  // init.js applies these on <html> (inline style beats both stylesheets)
+  // and removes any key that is absent.
+  const overrides = {};
+  const palette = PALETTES[scheme];
+
+  if (boost) {
+    if (typeof boost.fontFamily === 'string' && boost.fontFamily.trim() !== '') {
+      overrides['--nevo-font-family'] = boost.fontFamily;
+    }
+    if (Number.isFinite(boost.sizeOverride)) {
+      const zoom = Math.min(2, Math.max(0.5, boost.sizeOverride));
+      if (Math.abs(zoom - 1) >= 0.01) {
+        overrides['--nf-zoom'] = String(zoom);
+      }
+    }
+  }
+
+  if (colorBoostOn) {
+    // Contrast: 0.75 is the boost slider's neutral point.
+    const c = Number.isFinite(boost.contrast) ? boost.contrast : 0.75;
+    const pole = hexToRgb(palette.pole);
+    const bgBase = hexToRgb(palette.bg);
+    if (c > 0.75) {
+      const gain = Math.min(1, (c - 0.75) / 0.25);
+      overrides['--nevo-text'] = toHex(mixRgb(hexToRgb(palette.text), pole, 0.35 * gain));
+      overrides['--nevo-text-secondary'] = toHex(
+        mixRgb(hexToRgb(palette.textSecondary), pole, 0.3 * gain)
+      );
+      overrides['--nevo-border'] = toHex(
+        mixRgb(hexToRgb(palette.border), pole, 0.25 * gain)
+      );
+    } else if (c < 0.75) {
+      const loss = Math.min(1, (0.75 - c) / 0.75);
+      overrides['--nevo-text'] = toHex(
+        mixRgb(hexToRgb(palette.text), MID_GRAY, 0.35 * loss)
+      );
+      overrides['--nevo-text-secondary'] = toHex(
+        mixRgb(hexToRgb(palette.textSecondary), MID_GRAY, 0.3 * loss)
+      );
+      overrides['--nevo-border'] = toHex(
+        mixRgb(hexToRgb(palette.border), bgBase, 0.3 * loss)
+      );
+    }
+  }
+
   if (h === null) {
     return {
       scheme,
@@ -163,12 +259,26 @@ export function computeThemeVars(ctx) {
       accentHover: null,
       accentLight: null,
       accentLighter: null,
+      overrides,
     };
   }
 
   l = clampLightness(l, scheme);
   const accentRgb = hslToRgb(h, s, l);
   const hoverRgb = hslToRgb(h, s, Math.max(0.15, l - 0.08));
+
+  if (colorBoostOn && accentSource === 'boost') {
+    // Whole-surface tint toward the (clamped) accent, mirroring how the
+    // boost backend pulls every page color toward it.
+    overrides['--nevo-background'] = toHex(mixRgb(hexToRgb(palette.bg), accentRgb, 0.06));
+    overrides['--nevo-surface'] = toHex(mixRgb(hexToRgb(palette.surface), accentRgb, 0.08));
+    overrides['--nevo-surface-hover'] = toHex(
+      mixRgb(hexToRgb(palette.surfaceHover), accentRgb, 0.1)
+    );
+    overrides['--nevo-surface-active'] = toHex(
+      mixRgb(hexToRgb(palette.surfaceActive), accentRgb, 0.12)
+    );
+  }
 
   return {
     scheme,
@@ -177,5 +287,6 @@ export function computeThemeVars(ctx) {
     accentHover: toHex(hoverRgb),
     accentLight: `rgba(${accentRgb[0]}, ${accentRgb[1]}, ${accentRgb[2]}, 0.12)`,
     accentLighter: `rgba(${accentRgb[0]}, ${accentRgb[1]}, ${accentRgb[2]}, 0.08)`,
+    overrides,
   };
 }

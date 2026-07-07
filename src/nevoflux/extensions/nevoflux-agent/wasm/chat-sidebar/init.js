@@ -145,6 +145,14 @@
             windowId = (await browser.windows.getCurrent()).id;
         }
 
+        // Every override key computeThemeVars may emit; keys absent from the
+        // current result must be removed or stale boost styling would stick.
+        const OVERRIDE_KEYS = [
+            '--nevo-background', '--nevo-surface', '--nevo-surface-hover',
+            '--nevo-surface-active', '--nevo-text', '--nevo-text-secondary',
+            '--nevo-border', '--nevo-font-family', '--nf-zoom',
+        ];
+
         function applyThemeVars(vars) {
             const root = document.documentElement;
             root.dataset.nfScheme = vars.scheme;
@@ -157,6 +165,14 @@
             for (const [prop, value] of Object.entries(map)) {
                 if (value) {
                     root.style.setProperty(prop, value);
+                } else {
+                    root.style.removeProperty(prop);
+                }
+            }
+            const overrides = vars.overrides || {};
+            for (const prop of OVERRIDE_KEYS) {
+                if (overrides[prop]) {
+                    root.style.setProperty(prop, overrides[prop]);
                 } else {
                     root.style.removeProperty(prop);
                 }
