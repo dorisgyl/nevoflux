@@ -1740,6 +1740,16 @@
           { "name": "tabId", "type": "integer", "optional": true }
         ],
         "returns": { "$ref": "ApiResult" }
+      },
+      {
+        "name": "getThemeContext",
+        "type": "function",
+        "async": "promise",
+        "description": "Raw theme signals for the sidebar: color scheme from the Website-appearance pref, the active boost's color fields for the tab's domain, and the current space gradient primary color",
+        "parameters": [
+          { "name": "tabId", "type": "integer", "optional": true }
+        ],
+        "returns": { "type": "object", "additionalProperties": true }
       }
     ],
     "events": [
@@ -1771,6 +1781,12 @@
           { "name": "type", "type": "string" },
           { "name": "payload", "type": "any" }
         ]
+      },
+      {
+        "name": "onThemeContextChanged",
+        "type": "function",
+        "description": "Signal-only event: boosts / space gradient / appearance pref / system theme changed; listeners should re-query getThemeContext",
+        "parameters": []
       }
     ]
   }
