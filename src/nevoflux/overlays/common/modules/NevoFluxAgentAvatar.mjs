@@ -205,13 +205,22 @@ export const NevoFluxAgentAvatar = {
       menu.appendChild(btn);
     }
 
-    // Position the menu above and to the left of the avatar.
-    const r = this._el.getBoundingClientRect();
-    menu.style.left = `${Math.round(r.left)}px`;
-    menu.style.top = `${Math.round(r.top - 8)}px`; // will be shifted up by translateY in CSS
-
+    // Append first so the menu has a measurable width for edge-aware placement.
     doc.documentElement.appendChild(menu);
     this._menu = menu;
+
+    // Position above the avatar, opening toward the viewport interior. The avatar
+    // defaults to the bottom-right corner (and can be dragged to any edge), so
+    // right-align the menu to the avatar's right edge (open leftward) and clamp to
+    // an 8px margin on both sides — otherwise a menu wider than the gap to the
+    // edge spills past it and its far side gets clipped.
+    const r = this._el.getBoundingClientRect();
+    const margin = 8;
+    const menuW = menu.offsetWidth;
+    let menuLeft = r.right - menuW;
+    menuLeft = Math.max(margin, Math.min(menuLeft, window.innerWidth - menuW - margin));
+    menu.style.left = `${Math.round(menuLeft)}px`;
+    menu.style.top = `${Math.round(r.top - 8)}px`; // lifted above via translateY(-100%) in CSS
 
     // Dismiss on any outside click (captured in the capture phase).
     this._outsideClickHandler = (e) => {
