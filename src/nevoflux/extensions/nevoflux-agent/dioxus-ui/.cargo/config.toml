@@ -1,6 +1,9 @@
-# Use crates.io directly for dioxus-ui (not vendored sources from Firefox build)
+# Use crates.io directly for dioxus-ui (not vendored sources from Firefox build).
+# sparse+ URL: the bare github URL pins the legacy GIT index protocol, which
+# clones the multi-GB crates.io-index repo and hangs "Updating crates.io index"
+# forever on this network. Sparse fetches only the entries it needs.
 [source.crates-io]
-registry = "https://github.com/rust-lang/crates.io-index"
+registry = "sparse+https://index.crates.io/"
 
 [build]
 target = "wasm32-unknown-unknown"

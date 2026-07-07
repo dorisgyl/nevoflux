@@ -11,6 +11,4 @@ license.workspace = true
 description = "Markdown -> HTML renderer for the NevoFlux chat sidebar (pure, natively testable)"
 
 [dependencies]
-# 0.12 pinned: matches the crates already in the local cargo cache so the
-# build works offline (cargo's index fetch hangs on this machine's network).
 pulldown-cmark = { version = "0.12", default-features = false }
