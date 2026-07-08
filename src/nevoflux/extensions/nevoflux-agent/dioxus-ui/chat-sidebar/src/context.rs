@@ -15,6 +15,7 @@ use crate::state::{
     PickedFile, SessionState, SkillItem, StreamingState, TabContext,
 };
 use shared_protocol::ToolAuthRequest;
+use shared_protocol::SkillsUpdateRequestPayload;
 use shared_protocol::ChatMode;
 
 #[derive(Debug, Clone)]
@@ -74,6 +75,8 @@ pub struct AppContext {
     pub live_tools: Signal<Vec<LiveToolEntry>>,
     /// Pending tool authorization request
     pub pending_tool_auth: Signal<Option<ToolAuthRequest>>,
+    /// Pending skills-update prompt (bundled defaults changed → replace/keep)
+    pub pending_skills_update: Signal<Option<SkillsUpdateRequestPayload>>,
     /// User avatar data URL (from settings)
     pub avatar_url: Signal<Option<String>>,
     /// Whether the sidebar is in minimized rail mode
@@ -130,6 +133,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
     let show_history_panel = use_signal(|| false);
     let live_tools = use_signal(Vec::<LiveToolEntry>::new);
     let pending_tool_auth = use_signal(|| None::<ToolAuthRequest>);
+    let pending_skills_update = use_signal(|| None::<SkillsUpdateRequestPayload>);
     let avatar_url = use_signal(|| None::<String>);
     let minimized = use_signal(|| false);
     let event_notifications = use_signal(Vec::new);
@@ -163,6 +167,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
         show_history_panel,
         live_tools,
         pending_tool_auth,
+        pending_skills_update,
         avatar_url,
         minimized,
         event_notifications,

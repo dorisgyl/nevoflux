@@ -489,6 +489,21 @@ pub struct PlanResponsePayload {
     pub response: PlanResponse,
 }
 
+/// Agent → Sidebar: the bundled default skills changed since they were last
+/// applied; offer to replace the user's skills or keep them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillsUpdateRequestPayload {
+    /// Number of skill entries in the bundled defaults (for the prompt copy).
+    pub bundled_count: usize,
+}
+
+/// Sidebar → Agent: the user's choice for a pending skills update.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillsUpdateResponsePayload {
+    /// True = replace the user's skills with the bundled defaults; false = keep.
+    pub replace: bool,
+}
+
 // =============================================================================
 // Tool Events (Real-time tool execution state)
 // =============================================================================
@@ -626,6 +641,8 @@ pub enum ChatMessage {
     PlanResponse(PlanResponsePayload),
     /// Tool authorization response
     ToolAuthResponse(ToolAuthResponsePayload),
+    /// Skills update response (replace/keep)
+    SkillsUpdateResponse(SkillsUpdateResponsePayload),
     /// Cancel a /loop (Sidebar → Agent). Force=true is the second-click
     /// hard-cancel per spec §8.3; false is the soft cancel that lets the
     /// current iteration finish.
@@ -654,6 +671,8 @@ pub enum ChatMessage {
     PickFilesResponse(PickFilesResponsePayload),
     /// Plan proposal from agent
     PlanProposal(PlanProposalPayload),
+    /// Bundled default skills changed; prompt to replace or keep.
+    SkillsUpdateRequest(SkillsUpdateRequestPayload),
     /// Optimistic setup status pushed before the daemon connects, so the
     /// onboarding screen can render during cold boot. Reconciled by the
     /// authoritative `status` system_response.
@@ -690,6 +709,7 @@ impl ChatMessage {
             Self::PickFilesRequest(_) |
             Self::PlanResponse(_) |
             Self::ToolAuthResponse(_) |
+            Self::SkillsUpdateResponse(_) |
             Self::LoopCancelCommand(_) |
             Self::EventsRequest(_) => MessageDirection::ToAgent,
 
@@ -705,6 +725,7 @@ impl ChatMessage {
             Self::BrowserToolRequest(_) |
             Self::PickFilesResponse(_) |
             Self::PlanProposal(_) |
+            Self::SkillsUpdateRequest(_) |
             Self::SetupStatus(_) |
             Self::EventsResponse(_) |
             Self::EventsDelivery(_) |
@@ -726,6 +747,7 @@ impl ChatMessage {
             Self::PickFilesRequest(_) => None,
             Self::PlanResponse(p) => Some(&p.session_id),
             Self::ToolAuthResponse(_) => None,
+            Self::SkillsUpdateResponse(_) => None,
             Self::LoopCancelCommand(p) => Some(&p.session_id),
             Self::StreamChunk(_) => None, // New protocol doesn't include session_id
             Self::StreamEnd(p) => Some(&p.session_id),
@@ -738,6 +760,7 @@ impl ChatMessage {
             Self::BrowserToolRequest(p) => Some(&p.session_id),
             Self::PickFilesResponse(_) => None,
             Self::PlanProposal(_) => None,
+            Self::SkillsUpdateRequest(_) => None,
             Self::SetupStatus(_) => None,
             Self::EventsRequest(_) => None,
             Self::EventsResponse(_) => None,

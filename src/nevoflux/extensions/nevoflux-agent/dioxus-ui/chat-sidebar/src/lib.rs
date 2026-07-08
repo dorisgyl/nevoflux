@@ -119,6 +119,9 @@ fn ChatSidebar() -> Element {
                 // Tool authorization dialog (modal, for tool-level auth)
                 ToolAuthDialog {}
 
+                // Skills-update dialog (modal, replace/keep bundled skills)
+                SkillsUpdateDialog {}
+
                 // AskUser dialog (modal, for agent questions)
                 AskUserDialog {}
 
