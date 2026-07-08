@@ -73,6 +73,7 @@ fn ChatSidebar() -> Element {
     let ctx = use_app_context();
     let show_mcp_config = *ctx.show_mcp_config.read();
     let is_minimized = *ctx.minimized.read();
+    let is_maximized = ctx.maximize.read().is_maximized;
     let first_run = *ctx.first_run.read();
     let has_configured = *ctx.has_configured_provider.read();
 
@@ -94,40 +95,64 @@ fn ChatSidebar() -> Element {
             } else if show_mcp_config {
                 // MCP Config Modal (full-screen when visible)
                 McpConfigModal {}
-            } else {
-                // Connection status bar at the top (shows reconnecting/error states)
-                ConnectionStatusBar {}
-
-                // Header with connection status and controls
-                Header {}
-
-                // Main content area
-                div { class: "chat-content",
-                    // Message display area
-                    MessageArea {}
-
-                    // History panel overlay
-                    HistoryPanel {}
+            } else if is_maximized {
+                // Maximized (tab) form: left rail + main column, horizontal flex.
+                div { class: "sidebar-row",
+                    LeftMenu {}
+                    div { class: "sidebar-main-col",
+                        SidebarContent {}
+                    }
                 }
-
-                // Input area with context bar
-                InputArea {}
-
-                // Permission dialog (modal, P0 priority)
-                PermissionDialog {}
-
-                // Tool authorization dialog (modal, for tool-level auth)
-                ToolAuthDialog {}
-
-                // Skills-update dialog (modal, replace/keep bundled skills)
-                SkillsUpdateDialog {}
-
-                // AskUser dialog (modal, for agent questions)
-                AskUserDialog {}
-
-                // EventBus notification toasts (bottom-right overlay)
-                EventBusListener {}
+            } else {
+                // Sidebar form: main column only (no left rail).
+                SidebarContent {}
             }
         }
+    }
+}
+
+/// Shared sidebar body (status bar, header, content, input, dialogs).
+///
+/// Rendered directly in the sidebar form and wrapped in `.sidebar-main-col`
+/// (next to `LeftMenu`) in the maximized form, so the Jobs panel and every
+/// dialog work identically in both.
+#[component]
+fn SidebarContent() -> Element {
+    rsx! {
+        // Connection status bar at the top (shows reconnecting/error states)
+        ConnectionStatusBar {}
+
+        // Header with connection status and controls
+        Header {}
+
+        // Main content area
+        div { class: "chat-content",
+            // Message display area
+            MessageArea {}
+
+            // History panel overlay
+            HistoryPanel {}
+
+            // Jobs panel overlay (scheduled background jobs)
+            JobsPanel {}
+        }
+
+        // Input area with context bar
+        InputArea {}
+
+        // Permission dialog (modal, P0 priority)
+        PermissionDialog {}
+
+        // Tool authorization dialog (modal, for tool-level auth)
+        ToolAuthDialog {}
+
+        // Skills-update dialog (modal, replace/keep bundled skills)
+        SkillsUpdateDialog {}
+
+        // AskUser dialog (modal, for agent questions)
+        AskUserDialog {}
+
+        // EventBus notification toasts (bottom-right overlay)
+        EventBusListener {}
     }
 }

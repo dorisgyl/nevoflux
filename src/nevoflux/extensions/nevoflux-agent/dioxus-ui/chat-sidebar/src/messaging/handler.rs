@@ -318,6 +318,19 @@ fn handle_event_delivery(mut ctx: AppContext, delivery: shared_protocol::EventBu
         return;
     }
 
+    // system:schedule:* — /schedule skill (routines-style background jobs).
+    // Dedupe by event_id BEFORE touching any signals (per
+    // architecture_eventbus_dedupe_event_id MEMORY: duplicate signal keys
+    // freeze the Dioxus diff engine). Schedule events always carry an
+    // event_id (daemon mints one per publish).
+    if topic.starts_with("system:schedule:") {
+        if !dedupe_event_id(&delivery.event.event_id) {
+            return;
+        }
+        apply_schedule_event(ctx, topic, &delivery.event.payload);
+        return;
+    }
+
     if topic.contains(":notification") {
         let title = delivery.event.payload
             .get("title")
@@ -2028,6 +2041,141 @@ fn apply_loop_event(mut ctx: crate::context::AppContext, topic: &str, payload: &
         }
         _ => {
             tracing::warn!("[Sidebar] unknown system:loop:* topic: {topic}");
+        }
+    }
+}
+
+/// Materialize a `system:schedule:*` payload into `ctx.schedule_jobs` +
+/// `ctx.schedule_snapshot`.
+///
+/// Topics (suffix): created, state_changed, run_start, run_end, missed, snapshot.
+/// Payloads use event-specific field names (`cron_expr`/`at_ts`/`browser_policy`
+/// for `created`, `new_status` for `state_changed`), so fields are read
+/// manually rather than via serde (unlike `schedule.list`, which deserializes
+/// straight into `ScheduleJobState`).
+///
+/// The per-schedule map is fed by the transition events here; `snapshot` is the
+/// authoritative aggregate stored separately and used to drive the header
+/// calendar badge (see `Header`). A `state_changed` to `cancelled` REMOVES the
+/// entry from the map (cancelled jobs are not shown).
+fn apply_schedule_event(
+    mut ctx: crate::context::AppContext,
+    topic: &str,
+    payload: &serde_json::Value,
+) {
+    use crate::state::ScheduleJobState;
+
+    // Every non-snapshot event carries `schedule_id`.
+    let schedule_id = payload
+        .get("schedule_id")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    match topic {
+        "system:schedule:created" => {
+            let Some(id) = schedule_id else {
+                return;
+            };
+            let mut jobs = ctx.schedule_jobs.write();
+            let entry = jobs.entry(id.clone()).or_insert_with(|| ScheduleJobState {
+                schedule_id: id.clone(),
+                ..Default::default()
+            });
+            if let Some(name) = payload.get("name").and_then(|v| v.as_str()) {
+                entry.name = name.to_string();
+            }
+            if let Some(status) = payload.get("status").and_then(|v| v.as_str()) {
+                entry.status = status.to_string();
+            }
+            entry.cron = payload
+                .get("cron_expr")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            entry.at = payload.get("at_ts").and_then(|v| v.as_i64());
+            entry.next_fire_at = payload.get("next_fire_at").and_then(|v| v.as_i64());
+            if let Some(browser) = payload.get("browser_policy").and_then(|v| v.as_str()) {
+                entry.browser = browser.to_string();
+            }
+            if let Some(mode) = payload.get("mode").and_then(|v| v.as_str()) {
+                entry.mode = mode.to_string();
+            }
+        }
+        "system:schedule:state_changed" => {
+            let Some(id) = schedule_id else {
+                return;
+            };
+            let new_status = payload
+                .get("new_status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            // Cancelled schedules leave the panel entirely.
+            if new_status == "cancelled" {
+                ctx.schedule_jobs.write().remove(&id);
+                return;
+            }
+            let mut jobs = ctx.schedule_jobs.write();
+            let entry = jobs.entry(id.clone()).or_insert_with(|| ScheduleJobState {
+                schedule_id: id.clone(),
+                ..Default::default()
+            });
+            if let Some(name) = payload.get("name").and_then(|v| v.as_str()) {
+                if !name.is_empty() {
+                    entry.name = name.to_string();
+                }
+            }
+            if !new_status.is_empty() {
+                entry.status = new_status.to_string();
+            }
+            entry.next_fire_at = payload.get("next_fire_at").and_then(|v| v.as_i64());
+        }
+        "system:schedule:run_start" => {
+            let Some(id) = schedule_id else {
+                return;
+            };
+            let mut jobs = ctx.schedule_jobs.write();
+            let entry = jobs.entry(id.clone()).or_insert_with(|| ScheduleJobState {
+                schedule_id: id.clone(),
+                ..Default::default()
+            });
+            entry.running = true;
+        }
+        "system:schedule:run_end" => {
+            let Some(id) = schedule_id else {
+                return;
+            };
+            let mut jobs = ctx.schedule_jobs.write();
+            let entry = jobs.entry(id.clone()).or_insert_with(|| ScheduleJobState {
+                schedule_id: id.clone(),
+                ..Default::default()
+            });
+            entry.running = false;
+            if let Some(status) = payload.get("status").and_then(|v| v.as_str()) {
+                entry.last_run_status = Some(status.to_string());
+            }
+            if let Some(ended_at) = payload.get("ended_at").and_then(|v| v.as_i64()) {
+                entry.last_run_at = Some(ended_at);
+            }
+            // Optimistic bump; `schedule.list` reconciliation is authoritative.
+            entry.run_count += 1;
+        }
+        "system:schedule:missed" => {
+            let Some(id) = schedule_id else {
+                return;
+            };
+            let mut jobs = ctx.schedule_jobs.write();
+            let entry = jobs.entry(id.clone()).or_insert_with(|| ScheduleJobState {
+                schedule_id: id.clone(),
+                ..Default::default()
+            });
+            entry.last_run_status = Some("missed".to_string());
+        }
+        "system:schedule:snapshot" => {
+            // Authoritative aggregate ({active, running, failed_recent,
+            // next_fire_at}); stored whole and read by the header badge.
+            ctx.schedule_snapshot.set(Some(payload.clone()));
+        }
+        _ => {
+            tracing::warn!("[Sidebar] unknown system:schedule:* topic: {topic}");
         }
     }
 }
