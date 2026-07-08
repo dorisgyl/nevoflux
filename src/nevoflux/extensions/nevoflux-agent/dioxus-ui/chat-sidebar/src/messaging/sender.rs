@@ -1096,6 +1096,15 @@ pub async fn send_tool_auth_response(
     send_to_agent(msg).await
 }
 
+/// Send the user's skills-update choice (replace/keep) to the agent.
+pub async fn send_skills_update_response(replace: bool) -> Result<(), String> {
+    let msg = ChatMessage::SkillsUpdateResponse(shared_protocol::SkillsUpdateResponsePayload {
+        replace,
+    });
+
+    send_to_agent(msg).await
+}
+
 // ============================================
 // Settings / Avatar
 // ============================================

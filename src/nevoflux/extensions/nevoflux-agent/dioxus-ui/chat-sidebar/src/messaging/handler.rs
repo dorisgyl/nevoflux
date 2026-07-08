@@ -114,6 +114,9 @@ fn handle_chat_message(ctx: AppContext, message: ChatMessage) {
         ChatMessage::PlanProposal(payload) => {
             handle_plan_proposal(ctx, payload);
         }
+        ChatMessage::SkillsUpdateRequest(payload) => {
+            handle_skills_update_request(ctx, payload);
+        }
         ChatMessage::SetupStatus(payload) => {
             handle_setup_status(ctx, payload);
         }
@@ -164,6 +167,7 @@ fn handle_chat_message(ctx: AppContext, message: ChatMessage) {
         ChatMessage::PickFilesRequest(_) |
         ChatMessage::PlanResponse(_) |
         ChatMessage::ToolAuthResponse(_) |
+        ChatMessage::SkillsUpdateResponse(_) |
         ChatMessage::LoopCancelCommand(_) => {
             tracing::warn!("Received unexpected ToAgent message in sidebar");
         }
@@ -1046,6 +1050,21 @@ fn handle_plan_proposal(mut ctx: AppContext, payload: shared_protocol::PlanPropo
 
     // Set agent to waiting state
     ctx.agent_status.write().set_waiting();
+}
+
+// ============================================
+// Skills Update Handler
+// ============================================
+
+fn handle_skills_update_request(
+    mut ctx: AppContext,
+    payload: shared_protocol::SkillsUpdateRequestPayload,
+) {
+    tracing::info!(
+        "[Sidebar] Skills update available: {} bundled skill(s)",
+        payload.bundled_count
+    );
+    ctx.pending_skills_update.set(Some(payload));
 }
 
 // ============================================
