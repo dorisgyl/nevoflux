@@ -274,12 +274,31 @@ export const NevoFluxAgentAvatar = {
 
   setState(raw) {
     const el = this._ensure();
-    const [state, bubblePart] = String(raw || 'idle').split('|');
+    const parts = String(raw || 'idle').split('|');
+    const state = parts[0];
     if (['idle', 'working', 'needs-you', 'offline'].includes(state)) {
       el.setAttribute('data-state', state);
     }
-    if (bubblePart && bubblePart.startsWith('bubble:')) {
-      this._showBubble(bubblePart.slice('bubble:'.length));
+    // Task 5.2: scan the remaining parts order-independently for known
+    // prefixes (background composes 'state|bubble:...|jobs:...' or
+    // 'state|jobs:...|bubble:...' — either order must work). A push with no
+    // 'jobs:' part (e.g. plain 'idle') means the background job badge is
+    // 'none', so the attribute is cleared rather than left stale.
+    let jobs = 'none';
+    for (let i = 1; i < parts.length; i++) {
+      const part = parts[i];
+      if (part.startsWith('bubble:')) {
+        this._showBubble(part.slice('bubble:'.length));
+      } else if (part.startsWith('jobs:')) {
+        jobs = part.slice('jobs:'.length);
+      }
+    }
+    if (['healthy', 'running', 'failed'].includes(jobs)) {
+      el.setAttribute('data-jobs', jobs);
+    } else {
+      // Covers both the explicit 'none' value and any unrecognized value —
+      // fail safe to "no badge" rather than risk a stuck stale badge.
+      el.removeAttribute('data-jobs');
     }
   },
 
