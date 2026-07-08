@@ -89,6 +89,10 @@ const BackgroundAPI = {
   EVENTS_SUBSCRIBE: 'bg:events_subscribe',
   EVENTS_UNSUBSCRIBE: 'bg:events_unsubscribe',
   EVENTS_PUBLISH: 'bg:events_publish',
+
+  // Schedule badge state (background owns the system:schedule:* subscription;
+  // sidebar pulls the aggregated state for its own initial render).
+  SCHEDULE_BADGE_STATE: 'bg:schedule_badge_state',
 };
 
 // =============================================================================
@@ -193,6 +197,161 @@ const pendingSystemCommands = new Map();
 const eventBusSubscriptions = new Map(); // subscription_id → { source, tabId, bridgeId, patterns }
 const tabSubscriptions = new Map(); // tabId → Set<subscription_id>
 const pendingEventHistoryRequests = new Map(); // requestId → bridgeRequestId
+
+// Schedule badge state: background subscribes to `system:schedule:*` itself
+// (source 'background' in eventBusSubscriptions, id 'bg-schedule' — see
+// ensureBackgroundScheduleSubscription/handleScheduleEvent below) because the
+// floating avatar's jobs badge must stay live even when the sidebar is
+// closed. `snapshot` (sticky aggregate {active, running, failed_recent,
+// next_fire_at}) is authoritative; per-schedule run_start/run_end/missed/
+// state_changed events refine the picture between snapshots.
+const scheduleJobsState = {
+  schedules: new Map(), // schedule_id → { name, status, next_fire_at, last_run_status, running }
+  lastSnapshot: null, // last sticky snapshot payload: { active, running, failed_recent, next_fire_at }
+  seenEventIds: [], // bounded FIFO dedupe of event_id, cap SCHEDULE_EVENT_DEDUPE_CAP
+};
+// Background consumes system:schedule:* events itself (unlike the sidebar's
+// own subscription, which has its own dedupe), so it needs its own bounded
+// event_id cache — sticky replay redelivers the same snapshot/state_changed
+// event on every reconnect and must not be double-counted.
+const SCHEDULE_EVENT_DEDUPE_CAP = 512;
+
+/**
+ * Ensure the background-owned `system:schedule:*` subscription is tracked
+ * before NativeChannel#connect() calls replaySubscriptions() on the CHAT
+ * channel, so it rides every (re)connect's resubscribe wave the same way
+ * bridge/sidebar subscriptions do. Idempotent — safe to call on every
+ * connect.
+ */
+function ensureBackgroundScheduleSubscription() {
+  if (eventBusSubscriptions.has('bg-schedule')) return;
+  eventBusSubscriptions.set('bg-schedule', {
+    source: 'background',
+    tabId: null,
+    bridgeId: null,
+    patterns: ['system:schedule:*'],
+  });
+}
+
+/**
+ * Handle a delivered `system:schedule:*` EventBus event routed to the
+ * background-owned 'bg-schedule' subscription (see the fan-out loop's
+ * `sub.source === 'background'` branch). `event` is the BusEventPayload
+ * wire shape: `{ event_id, topic, payload, delivery, publisher, timestamp_ms }`.
+ *
+ * Dedupes by `event_id` (sticky replay redelivers the same snapshot/
+ * state_changed event on every reconnect), folds the event into
+ * scheduleJobsState, and pushes the derived badge to AvatarController.
+ */
+function handleScheduleEvent(event) {
+  const eventId = event?.event_id;
+  if (eventId) {
+    if (scheduleJobsState.seenEventIds.includes(eventId)) return;
+    scheduleJobsState.seenEventIds.push(eventId);
+    if (scheduleJobsState.seenEventIds.length > SCHEDULE_EVENT_DEDUPE_CAP) {
+      scheduleJobsState.seenEventIds.shift();
+    }
+  }
+
+  const topic = event?.topic || '';
+  const prefix = 'system:schedule:';
+  if (!topic.startsWith(prefix)) return;
+  const suffix = topic.slice(prefix.length);
+  const data = event?.payload || {};
+
+  const upsertSchedule = (id, patch) => {
+    if (!id) return;
+    const existing = scheduleJobsState.schedules.get(id) || {};
+    scheduleJobsState.schedules.set(id, { ...existing, ...patch });
+  };
+
+  switch (suffix) {
+    case 'snapshot':
+      // Sticky aggregate, republished after every transition — authoritative
+      // for the badge (see ScheduleEvents::snapshot in the daemon).
+      scheduleJobsState.lastSnapshot = {
+        active: data.active ?? 0,
+        running: data.running ?? 0,
+        failed_recent: data.failed_recent ?? 0,
+        next_fire_at: data.next_fire_at ?? null,
+      };
+      // Per-schedule running/last_run_status hints only exist to refine the
+      // badge in the brief window before their matching snapshot arrives —
+      // clear them now so a hint can never outlive its snapshot (e.g. a run
+      // that crashes without a run_end, or a failed schedule that gets
+      // cancelled, must not pin the badge red/running forever).
+      for (const sched of scheduleJobsState.schedules.values()) {
+        delete sched.running;
+        delete sched.last_run_status;
+      }
+      break;
+
+    case 'created':
+      upsertSchedule(data.schedule_id, {
+        name: data.name,
+        status: data.status,
+        next_fire_at: data.next_fire_at,
+      });
+      break;
+
+    case 'state_changed':
+      upsertSchedule(data.schedule_id, {
+        name: data.name,
+        status: data.new_status,
+        next_fire_at: data.next_fire_at,
+      });
+      break;
+
+    case 'run_start':
+      upsertSchedule(data.schedule_id, { name: data.name, running: true });
+      break;
+
+    case 'run_end':
+      upsertSchedule(data.schedule_id, {
+        name: data.name,
+        running: false,
+        last_run_status: data.status,
+      });
+      break;
+
+    case 'missed':
+      upsertSchedule(data.schedule_id, { name: data.name, last_run_status: 'missed' });
+      break;
+
+    default:
+      // Unknown/forward-compat topic suffix under system:schedule:* — dedupe
+      // is already recorded above; nothing further to fold into state.
+      return;
+  }
+
+  AvatarController.setJobs(deriveScheduleJobsBadge());
+}
+
+/**
+ * Derive the aggregate avatar badge from scheduleJobsState.
+ * Precedence: failed > running > healthy > none.
+ *
+ * The sticky `snapshot` aggregate is authoritative (the daemon republishes
+ * it after every transition); per-schedule run_start/run_end/missed/
+ * state_changed hints refine 'running'/'failed' for the brief window
+ * between snapshots.
+ */
+function deriveScheduleJobsBadge() {
+  const snap = scheduleJobsState.lastSnapshot;
+  let failed = !!snap && snap.failed_recent > 0;
+  let running = !!snap && snap.running > 0;
+  const active = !!snap && snap.active > 0;
+
+  for (const sched of scheduleJobsState.schedules.values()) {
+    if (sched.last_run_status === 'error' || sched.last_run_status === 'missed') failed = true;
+    if (sched.running) running = true;
+  }
+
+  if (failed) return 'failed';
+  if (running) return 'running';
+  if (active) return 'healthy';
+  return 'none';
+}
 
 // Recording state: tabId → { recording_id, goal_hint }
 // Survives navigation (lives in background, which is extension-global).
@@ -652,6 +811,10 @@ class NativeChannel {
       // re-send them or downstream subscribers (sidebar, bridge) stop
       // receiving events. Only the Chat channel carries EventBus traffic.
       if (this.name === CHANNEL_NAMES.CHAT) {
+        // Register the background-owned schedule subscription BEFORE replay
+        // so it's included in this connect's resubscribe wave (and every
+        // future reconnect's), regardless of whether the sidebar is open.
+        ensureBackgroundScheduleSubscription();
         this.replaySubscriptions();
       }
 
@@ -1171,6 +1334,11 @@ class ChannelManager {
             type: MessageTypes.EVENTS_DELIVERY,
             payload: pushPayload,
           });
+        } else if (sub.source === 'background') {
+          // Background's own 'bg-schedule' subscription feeds the avatar jobs
+          // badge directly — no sidebar broadcast here (the sidebar has its
+          // own subscription; broadcasting here too would double-deliver).
+          handleScheduleEvent(eventPayload.event);
         }
       }
       // Don't fall through to sidebar broadcast — we handled routing above
@@ -1796,6 +1964,11 @@ const AvatarController = {
   // Session context cached from the last bg:agent_minimize message. Used by
   // avatar:maximize to open the correct maximized view with the right session.
   lastSessionContext: null,
+  // Aggregate schedule badge ('failed'|'running'|'healthy'|'none'), driven by
+  // handleScheduleEvent via setJobs(). Composed into every pushed status
+  // string (see _withJobsSuffix) so it survives independently of the
+  // idle/working/needs-you/offline state and any transient bubble text.
+  jobsBadge: 'none',
 
   show() {
     if (this.shown) return;
@@ -1906,8 +2079,26 @@ const AvatarController = {
 
   _lastPromptAt: 0,
 
+  // Append '|jobs:<badge>' to an already-composed status string, unless the
+  // badge is 'none' (nothing to show). Shared by pushState() and fire() so
+  // the jobs badge survives alongside bubble text — the avatar-side parser
+  // (Task 5.2) reads '|'-delimited parts independent of order, so
+  // 'working|bubble:X|jobs:running' is valid.
+  _withJobsSuffix(status) {
+    return this.jobsBadge && this.jobsBadge !== 'none' ? `${status}|jobs:${this.jobsBadge}` : status;
+  },
+
+  // Called by handleScheduleEvent() whenever the derived schedule badge
+  // changes. Stored unconditionally (so it self-primes the next show()/
+  // pushState() even while hidden); only pushed to chrome immediately when
+  // the avatar is currently shown.
+  setJobs(badge) {
+    this.jobsBadge = badge;
+    if (this.shown) this.pushState();
+  },
+
   pushState() {
-    browser.nevoflux.setAgentStatus(this.machine.getState()).catch(() => {});
+    browser.nevoflux.setAgentStatus(this._withJobsSuffix(this.machine.getState())).catch(() => {});
   },
 
   async onEvent(kind) {
@@ -1927,7 +2118,9 @@ const AvatarController = {
 
   fire(prompt) {
     // Bubble always; OS notification only when unfocused.
-    browser.nevoflux.setAgentStatus(`${this.machine.getState()}|bubble:${prompt.bubble}`).catch(() => {});
+    browser.nevoflux
+      .setAgentStatus(this._withJobsSuffix(`${this.machine.getState()}|bubble:${prompt.bubble}`))
+      .catch(() => {});
     if (prompt.os) {
       browser.notifications.create(`nevoflux-avatar-${Date.now()}`, {
         type: 'basic',
@@ -7673,6 +7866,18 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
         }
       })();
       return true;
+    }
+
+    case BackgroundAPI.SCHEDULE_BADGE_STATE: {
+      // Cheap synchronous read of background's own system:schedule:*
+      // aggregate — lets a (re)opened sidebar prime its Jobs UI immediately
+      // instead of waiting on its own subscription's sticky replay.
+      sendResponse({
+        success: true,
+        badge: deriveScheduleJobsBadge(),
+        snapshot: scheduleJobsState.lastSnapshot,
+      });
+      break;
     }
 
     case BackgroundAPI.EVENTS_SUBSCRIBE: {
