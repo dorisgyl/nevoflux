@@ -139,4 +139,14 @@ if [ -d "docs/reference/skills" ]; then
   echo "Placed: docs/reference/skills/* → $BIN_DIR/defaults/skills/"
 fi
 
+# --- Post-update cleanup scripts (always) ---
+# Ship the cross-platform cleanup scripts next to the agent so it can run the
+# platform one on a version bump, and users can run them manually. See
+# scripts/cleanup/README.md.
+if [ -d "scripts/cleanup" ]; then
+  mkdir -p "$BIN_DIR/cleanup"
+  cp -r scripts/cleanup/. "$BIN_DIR/cleanup/"
+  echo "Placed: scripts/cleanup/* → $BIN_DIR/cleanup/"
+fi
+
 echo "inject-agent.sh: arch=$ARCH OK ($DIST_DIR)"
