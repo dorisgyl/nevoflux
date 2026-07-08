@@ -211,6 +211,17 @@ jobs:
             echo "::warning::docs/reference/skills/ not found, skipping skills"
           fi
 
+      - name: Copy cleanup scripts to distribution
+        run: |
+          if [ -d "scripts/cleanup" ]; then
+            mkdir -p build/AppDir/distribution/bin/cleanup
+            cp -r scripts/cleanup/* build/AppDir/distribution/bin/cleanup/
+            echo "Cleanup scripts copied to distribution:"
+            ls -la build/AppDir/distribution/bin/cleanup/
+          else
+            echo "::warning::scripts/cleanup/ not found, skipping cleanup scripts"
+          fi
+
       - name: Verify distribution essentials
         run: |
           set -e
