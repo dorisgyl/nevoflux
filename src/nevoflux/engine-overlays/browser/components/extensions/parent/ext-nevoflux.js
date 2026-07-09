@@ -208,7 +208,13 @@ this.nevoflux = class extends ExtensionAPI {
 
         async snapshot(tabId, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, 'snapshot', options);
+          // autoRestore:false — a snapshot is a passive read; it must NOT wake +
+          // activate a discarded background tab (that steals focus from the
+          // Canvas tab, forcing the user to click back). If the target is
+          // discarded, snapshot is skipped instead of stealing focus.
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'snapshot', options, {
+            autoRestore: false,
+          });
         },
 
         async screenshot(tabId, options = {}) {
@@ -2733,6 +2739,20 @@ this.nevoflux = class extends ExtensionAPI {
     }
 
     const nativeTab = tab.nativeTab;
+
+    // Passive callers (e.g. snapshot) pass autoRestore:false: never wake +
+    // activate a discarded tab just to read it — that would steal focus from
+    // whatever tab (e.g. a Canvas tab) the user is on. Skip cleanly instead.
+    if (!autoRestore && this.isTabDiscarded(nativeTab)) {
+      return {
+        success: false,
+        error: {
+          code: 5008,
+          message: 'Tab is discarded; skipped to preserve focus',
+          recoverable: true,
+        },
+      };
+    }
 
     // Auto-restore discarded tabs if needed
     if (autoRestore && this.isTabDiscarded(nativeTab)) {

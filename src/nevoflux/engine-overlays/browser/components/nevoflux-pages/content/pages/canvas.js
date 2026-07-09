@@ -248,8 +248,21 @@ const Canvas = {
     if (e.data.__nevofluxEval === 'request') {
       var reply = { _nevoflux: true, __nevofluxEval: 'response', evalId: e.data.evalId };
       try {
-        // Indirect eval → runs in global scope; last expression is the value.
-        var _r = (0, eval)(e.data.script);
+        // Try indirect eval first (global scope; last expression is the value).
+        // If the script uses a top-level `return` (very common — the agent
+        // writes `...click(); return el.textContent;`), indirect eval throws a
+        // SyntaxError "return not in function"; retry it as a Function body so
+        // `return` works.
+        var _r;
+        try {
+          _r = (0, eval)(e.data.script);
+        } catch (evalErr) {
+          if (evalErr instanceof SyntaxError && /return/i.test(evalErr.message || '')) {
+            _r = new Function(e.data.script)();
+          } else {
+            throw evalErr;
+          }
+        }
         Promise.resolve(_r).then(function(val) {
           try { reply.ok = true; reply.result = JSON.parse(JSON.stringify(val === undefined ? null : val)); }
           catch (_) { reply.ok = true; reply.result = String(val); }
