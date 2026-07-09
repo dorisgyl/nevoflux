@@ -7,6 +7,12 @@ max_iterations: 50
 
 # /loop
 
+## When NOT to use this
+
+- Wall-clock or hourly-plus cadence ("every morning at 9", "weekly") → `schedule_create` (/schedule skill).
+- A one-shot task with a verifiable end state ("until tests pass") → `goal_set` (/goal skill).
+- /loop is for minute-level polling and event/DOM reactions while the session is alive.
+
 You are running INSIDE a loop iteration. Behave accordingly.
 
 ## Iteration context model
@@ -66,6 +72,16 @@ Range clamped to [60, 3600]. Missing/unparseable defaults to 300.
 - Three consecutive iteration errors trip auto-cancel (state → `failed`).
 - You can self-cancel via `loop.cancel({ loop_id: <your_loop_id_from_LOOP-CONTEXT> })`.
 - You **may not** create new loops (`loop.create` is forbidden in iterations) or call `ask_user` (sidebar may be closed; nobody to answer).
+
+## Writing self-provable conditions
+
+When a loop exists to reach an end state ("until the deploy is green", "until the price drops"), phrase the stop condition the way the /goal evaluator demands: one measurable end state + a stated check whose output you actually surface. Run the check inside the iteration and write its result to the scratchpad — a future iteration (which remembers nothing else) must be able to decide "met, self-cancel" from the scratchpad alone. Never self-cancel on an assumption; only on observed check output.
+
+## Token discipline
+
+- Match the interval to the change rate of what you're watching. If nothing changed in the last N fires, prefer `time:dynamic` and back the delay off toward the 3600s cap.
+- Prefer scripts over reasoning: a `bash` one-liner (agent mode) or a single `web_fetch` that emits a comparable value beats re-deriving state from prose every fire.
+- Scratchpad over re-derivation: store the last-seen value/ID/cursor and diff against it; exit early ("no change") instead of re-analyzing from scratch.
 
 ## Safety warnings
 
