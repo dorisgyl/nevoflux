@@ -1,5 +1,5 @@
-import { base64_to_arraybuffer } from './snippets/chat-sidebar-1dca929d453d3a08/inline0.js';
-import { copyTextFallback } from './snippets/chat-sidebar-1dca929d453d3a08/inline1.js';
+import { copyTextFallback } from './snippets/chat-sidebar-1dca929d453d3a08/inline0.js';
+import { base64_to_arraybuffer } from './snippets/chat-sidebar-1dca929d453d3a08/inline1.js';
 import { RawInterpreter } from './snippets/dioxus-interpreter-js-c0f0333193e32f17/inline0.js';
 import { setAttributeInner } from './snippets/dioxus-interpreter-js-c0f0333193e32f17/src/js/set_attribute.js';
 import { get_select_data } from './snippets/dioxus-web-afdd4c4e5aff9d11/inline0.js';
@@ -166,7 +166,7 @@ export function serialize_mcp_message(message) {
         wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
     }
 }
-import * as import1 from "./snippets/chat-sidebar-1dca929d453d3a08/inline1.js"
+import * as import1 from "./snippets/chat-sidebar-1dca929d453d3a08/inline0.js"
 
 function __wbg_get_imports() {
     const import0 = {
@@ -1579,7 +1579,7 @@ function __wbg_get_imports() {
             return ret;
         },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { dtor_idx: 1025, function: Function { arguments: [Externref, Externref, Externref], shim_idx: 1026, ret: Externref, inner_ret: Some(Externref) }, mutable: false }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { dtor_idx: 1085, function: Function { arguments: [Externref, Externref, Externref], shim_idx: 1086, ret: Externref, inner_ret: Some(Externref) }, mutable: false }) -> Externref`.
             const ret = makeClosure(arg0, arg1, wasm.wasm_bindgen__closure__destroy__h2abecd61864a845c, wasm_bindgen__convert__closures_____invoke__h0c6a03b85f591fdf);
             return ret;
         },
@@ -1641,7 +1641,7 @@ function __wbg_get_imports() {
     return {
         __proto__: null,
         "./chat-sidebar_bg.js": import0,
-        "./snippets/chat-sidebar-1dca929d453d3a08/inline1.js": import1,
+        "./snippets/chat-sidebar-1dca929d453d3a08/inline0.js": import1,
     };
 }
 

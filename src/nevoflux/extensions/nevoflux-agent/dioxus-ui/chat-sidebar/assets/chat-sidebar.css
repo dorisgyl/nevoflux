@@ -4465,7 +4465,7 @@ body {
     background: color-mix(in srgb, var(--nevo-warning) 20%, transparent);
   }
   .job-run-badge.badge-running {
-    background: rgba(26, 107, 107, 0.2);
+    background: color-mix(in srgb, var(--nevo-primary) 20%, transparent);
   }
   .job-status-chip.status-paused {
     background: color-mix(in srgb, var(--nevo-warning) 20%, transparent);

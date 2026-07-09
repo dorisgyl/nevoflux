@@ -21,7 +21,13 @@ pub fn LeftMenu() -> Element {
         return rsx! {};
     }
 
-    let has_jobs = !ctx.schedule_jobs.read().is_empty();
+    // Only non-terminal (live) schedules light the rail badge; terminal rows
+    // (`cancelled`/`ran`) must not (mirrors the header derivation).
+    let has_jobs = ctx
+        .schedule_jobs
+        .read()
+        .values()
+        .any(|j| j.status != "cancelled" && j.status != "ran");
     let jobs_open = *ctx.show_jobs_panel.read();
 
     let toggle_jobs = move |_| {

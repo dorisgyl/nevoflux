@@ -2108,8 +2108,11 @@ fn apply_schedule_event(
                 .get("new_status")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            // Cancelled schedules leave the panel entirely.
-            if new_status == "cancelled" {
+            // Terminal transitions leave the panel entirely: `cancelled`, and
+            // the one-off retirement `ran` (`Active → Ran`, emitted as a
+            // state_changed). Either would otherwise linger in the map and
+            // poison the header/left-menu badge.
+            if new_status == "cancelled" || new_status == "ran" {
                 ctx.schedule_jobs.write().remove(&id);
                 return;
             }
@@ -2172,6 +2175,23 @@ fn apply_schedule_event(
         "system:schedule:snapshot" => {
             // Authoritative aggregate ({active, running, failed_recent,
             // next_fire_at}); stored whole and read by the header badge.
+            //
+            // Self-heal stuck per-schedule `running` flags. `run_end` is
+            // ephemeral and is lost on a daemon crash / channel EOF, so a card
+            // can be pinned `running: true` forever (reconcile deliberately
+            // preserves the flag, so a list refresh can't heal it). The daemon
+            // republishes this snapshot after every transition; when it reports
+            // zero in-flight runs, NO schedule can be running, so clear every
+            // per-schedule flag (mirrors background.js). Converges within one
+            // transition. The nonzero case is left to reconcile's preserve
+            // behavior.
+            let running_count = payload.get("running").and_then(|v| v.as_i64()).unwrap_or(0);
+            if running_count == 0 {
+                let mut jobs = ctx.schedule_jobs.write();
+                for job in jobs.values_mut() {
+                    job.running = false;
+                }
+            }
             ctx.schedule_snapshot.set(Some(payload.clone()));
         }
         _ => {

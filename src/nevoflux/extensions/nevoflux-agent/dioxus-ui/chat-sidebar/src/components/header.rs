@@ -90,16 +90,20 @@ pub fn Header() -> Element {
     let (has_jobs, jobs_failed) = {
         let schedule_jobs = ctx.schedule_jobs.read();
         let snapshot = ctx.schedule_snapshot.read();
-        let map_has = !schedule_jobs.is_empty();
+        // Count only non-terminal (live) schedules. Terminal rows (`cancelled`/
+        // `ran`) must never light the badge — belt-and-braces against any event
+        // path that could leave a terminal entry in the map.
+        let is_live = |j: &crate::state::ScheduleJobState| j.status != "cancelled" && j.status != "ran";
+        let map_has = schedule_jobs.values().any(is_live);
         let snap_active = snapshot
             .as_ref()
             .and_then(|s| s.get("active"))
             .and_then(|v| v.as_i64())
             .unwrap_or(0)
             > 0;
-        let map_failed = schedule_jobs
-            .values()
-            .any(|j| matches!(j.last_run_status.as_deref(), Some("error") | Some("missed")));
+        let map_failed = schedule_jobs.values().any(|j| {
+            is_live(j) && matches!(j.last_run_status.as_deref(), Some("error") | Some("missed"))
+        });
         let snap_failed = snapshot
             .as_ref()
             .and_then(|s| s.get("failed_recent"))

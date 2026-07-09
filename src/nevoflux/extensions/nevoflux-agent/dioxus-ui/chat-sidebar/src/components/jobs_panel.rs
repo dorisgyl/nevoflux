@@ -28,6 +28,14 @@ fn reconcile_schedule_jobs(mut ctx: AppContext, incoming: Vec<ScheduleJobState>)
         .collect();
     map.clear();
     for mut job in incoming {
+        // `schedule.list` returns ALL statuses, including terminal ones
+        // (`cancelled`/`ran`). Terminal schedules must never re-enter the live
+        // map: the panel filters them out, and — crucially — a cancelled row
+        // whose `last_run_status` is still `error` would otherwise re-poison
+        // the header/left-menu failed badge forever. Skip them here.
+        if job.status == "cancelled" || job.status == "ran" {
+            continue;
+        }
         if running_ids.contains(&job.schedule_id) {
             job.running = true;
         }
