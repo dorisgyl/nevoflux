@@ -1798,6 +1798,11 @@ class ChannelManager {
         // daemon's oneshot never fires (30s timeout, no recording armed).
         'recording_start',
         'recording_stop',
+        // canvas_eval runs JS inside the artifact iframe entirely in
+        // background.js (find canvas tab by artifact_id → browser.nevoflux
+        // .canvasEval → NevofluxChild.evalInIframe). The sidebar WASM has no
+        // handler, so forwarding there silently drops it → 30s timeout.
+        'canvas_eval',
       ]);
       // In headless automation mode there is no sidebar, so every browser tool
       // must execute directly in the background (P1/A2). executeBrowserTool is
