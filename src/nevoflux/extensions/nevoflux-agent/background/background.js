@@ -5350,6 +5350,16 @@ async function executeCanvasEval(params) {
       },
     };
   }
+  // Bring the canvas tab to the foreground before evaluating. The turn-start
+  // viewport snapshot runs on a regular web tab (getActiveTabId excludes the
+  // nevoflux:// canvas tab), which pulls focus off the canvas tab and can let
+  // Firefox discard it. Re-activating here makes canvas_eval self-sufficient
+  // (its iframe stays live) so the user never has to click back to the tab.
+  try {
+    await browser.tabs.update(tabId, { active: true });
+  } catch (e) {
+    console.warn('[NevoFlux] canvas_eval: could not activate canvas tab:', e);
+  }
   try {
     const result = await browser.nevoflux.canvasEval(tabId, script, { timeoutMs });
     return result?.success !== undefined ? result : { success: true, result };
