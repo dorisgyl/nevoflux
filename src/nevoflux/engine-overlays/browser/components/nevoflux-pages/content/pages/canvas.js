@@ -249,10 +249,11 @@ const Canvas = {
       var reply = { _nevoflux: true, __nevofluxEval: 'response', evalId: e.data.evalId };
       try {
         // Try indirect eval first (global scope; last expression is the value).
-        // If the script uses a top-level `return` (very common — the agent
-        // writes `...click(); return el.textContent;`), indirect eval throws a
-        // SyntaxError "return not in function"; retry it as a Function body so
-        // `return` works.
+        // If the script uses a top-level return (common — the agent writes
+        // "...click(); return el.textContent;"), indirect eval throws a
+        // SyntaxError "return not in function"; retry as a Function body so
+        // return works. NOTE: no backticks here — this runs inside a
+        // template-literal SDK string.
         var _r;
         try {
           _r = (0, eval)(e.data.script);
