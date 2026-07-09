@@ -4905,7 +4905,12 @@ export class NevofluxChild extends JSWindowActorChild {
   // is out-of-process, so we cannot reach it synchronously — we postMessage a
   // `__nevofluxEval` request (handled by the injected SDK) and await the reply
   // on the canvas top window. Backs the `canvas_eval` tool (spec §6).
-  async evalInIframe({ script, timeoutMs = 5000 }) {
+  async evalInIframe({ script, timeoutMs }) {
+    // Coerce null/invalid to the default. A JS default param only applies to
+    // `undefined`, but the daemon serializes an absent timeout_ms to JSON
+    // `null` — `setTimeout(fn, null)` would fire IMMEDIATELY (0ms), making
+    // every canvas_eval return CANVAS_EVAL_TIMEOUT instantly.
+    const timeout = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 5000;
     const win = this.contentWindow;
     if (!win) {
       return {
@@ -4955,7 +4960,7 @@ export class NevofluxChild extends JSWindowActorChild {
           success: false,
           error: { code: 5006, message: 'CANVAS_EVAL_TIMEOUT', recoverable: true },
         });
-      }, timeoutMs);
+      }, timeout);
       win.addEventListener('message', onMsg);
       try {
         iframe.contentWindow.postMessage(
