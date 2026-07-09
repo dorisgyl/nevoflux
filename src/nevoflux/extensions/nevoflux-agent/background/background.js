@@ -3740,6 +3740,8 @@ async function executeBrowserTool(request, caller = 'unknown') {
     'read_artifact',
     'edit_artifact',
     'canvas_render',
+    // canvas_eval addresses the target canvas tab by artifact_id itself.
+    'canvas_eval',
     // Visual-identity extraction handles its own tab lifecycle: URL mode
     // creates a background tab; tab mode reads target.tab_id from params.
     // Adding to this set prevents the dispatcher from rejecting URL-mode
@@ -3821,6 +3823,9 @@ async function executeBrowserTool(request, caller = 'unknown') {
       // JavaScript execution
       case 'eval_js':
         return await executeEvalJsViaApi(targetTabId, params);
+
+      case 'canvas_eval':
+        return await executeCanvasEval(params);
 
       // Waiting
       case 'wait_for':
@@ -5304,6 +5309,45 @@ async function executeEvalJsViaApi(tabId, params) {
   try {
     const result = await browser.nevoflux.eval(tabId, script);
     return result.success !== undefined ? result : { success: true, result };
+  } catch (error) {
+    return { success: false, error: { code: -1, message: error.message, recoverable: true } };
+  }
+}
+
+/**
+ * Run a JS snippet inside a canvas artifact's iframe via the privileged
+ * canvasEval bridge, addressing the canvas tab by artifact_id (spec §6).
+ */
+async function executeCanvasEval(params) {
+  const { artifact_id: artifactId, script, timeout_ms: timeoutMs } = params || {};
+  if (!artifactId || !script) {
+    return {
+      success: false,
+      error: { code: -1, message: 'artifact_id and script are required', recoverable: false },
+    };
+  }
+  // Locate the open canvas tab for this artifact.
+  let tabId = null;
+  try {
+    const tabs = await browser.tabs.query({ currentWindow: true });
+    const target = tabs.find((t) => t.url === `nevoflux://canvas/${artifactId}`);
+    if (target) tabId = target.id;
+  } catch (e) {
+    console.error('[NevoFlux] canvas_eval: tab query failed:', e);
+  }
+  if (tabId == null) {
+    return {
+      success: false,
+      error: {
+        code: -1,
+        message: `CANVAS_TAB_NOT_FOUND: no open canvas tab for artifact ${artifactId}`,
+        recoverable: true,
+      },
+    };
+  }
+  try {
+    const result = await browser.nevoflux.canvasEval(tabId, script, { timeoutMs });
+    return result?.success !== undefined ? result : { success: true, result };
   } catch (error) {
     return { success: false, error: { code: -1, message: error.message, recoverable: true } };
   }

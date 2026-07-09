@@ -1474,6 +1474,28 @@ this.nevoflux = class extends ExtensionAPI {
           });
         },
 
+        // Run a JS snippet inside the canvas tab's artifact iframe and return
+        // the value. Unlike `eval` (synchronous evalInSandbox on the top page),
+        // this awaits an async postMessage round-trip into the OOP iframe. Backs
+        // the canvas_eval tool (spec §6).
+        async canvasEval(tabId, script, options = {}) {
+          if (!script || typeof script !== 'string') {
+            return {
+              success: false,
+              error: {
+                code: 9002,
+                message: 'Missing or invalid required parameter: script',
+                recoverable: false,
+              },
+            };
+          }
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'evalInIframe', {
+            script,
+            timeoutMs: options.timeoutMs,
+          });
+        },
+
         async addScript(tabId, script, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
           return self.executeInTabWithRestore(resolvedTabId, extension, 'addScript', {
