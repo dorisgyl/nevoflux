@@ -73,10 +73,24 @@ One-off cleanup reminder (fires once, survives a daemon restart):
 schedule_create {
   "name": "clear stale downloads reminder",
   "at": "2026-07-15T18:00:00+08:00",
-  "prompt_text": "Remind the user to clear ~/Downloads of files older than 30 days; list the 10 largest candidates.",
+  "prompt_text": "List the 10 largest files in ~/Downloads older than 30 days, then call notify_user with a short reminder to clear them.",
   "catch_up": true
 }
 ```
+
+## Reminders — reach the user with notify_user
+
+A scheduled run happens in the background; finishing a task is not the same as
+telling the user about it. When the prompt is a reminder — the user said
+"remind me…", "提醒我…", "tell me when…", or the intent is clearly to notify —
+the scheduled run MUST call the `notify_user` tool with the reminder text.
+`notify_user` delivers a desktop notification (seen even when the sidebar is
+closed) plus an in-app toast; without it the reminder is written to the run's
+output and the user never sees it.
+
+- Reminder prompts → do the work if any, then call `notify_user { message, title? }`.
+- Non-reminder background tasks (digests, metric pulls, hunts) → do NOT call
+  `notify_user`; their result is read later from the Jobs panel.
 
 ## The proactive-loop pattern (goal_condition + max_tokens_per_run)
 
