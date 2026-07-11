@@ -89,6 +89,10 @@ const BackgroundAPI = {
   EVENTS_SUBSCRIBE: 'bg:events_subscribe',
   EVENTS_UNSUBSCRIBE: 'bg:events_unsubscribe',
   EVENTS_PUBLISH: 'bg:events_publish',
+
+  // Schedule badge state (background owns the system:schedule:* subscription;
+  // sidebar pulls the aggregated state for its own initial render).
+  SCHEDULE_BADGE_STATE: 'bg:schedule_badge_state',
 };
 
 // =============================================================================
@@ -193,6 +197,231 @@ const pendingSystemCommands = new Map();
 const eventBusSubscriptions = new Map(); // subscription_id → { source, tabId, bridgeId, patterns }
 const tabSubscriptions = new Map(); // tabId → Set<subscription_id>
 const pendingEventHistoryRequests = new Map(); // requestId → bridgeRequestId
+
+// Schedule badge state: background subscribes to `system:schedule:*` itself
+// (source 'background' in eventBusSubscriptions, id 'bg-schedule' — see
+// ensureBackgroundScheduleSubscription/handleScheduleEvent below) because the
+// floating avatar's jobs badge must stay live even when the sidebar is
+// closed. `snapshot` (sticky aggregate {active, running, failed_recent,
+// next_fire_at}) is authoritative; per-schedule run_start/run_end/missed/
+// state_changed events refine the picture between snapshots.
+const scheduleJobsState = {
+  schedules: new Map(), // schedule_id → { name, status, next_fire_at, last_run_status, running }
+  lastSnapshot: null, // last sticky snapshot payload: { active, running, failed_recent, next_fire_at }
+  seenEventIds: [], // bounded FIFO dedupe of event_id, cap SCHEDULE_EVENT_DEDUPE_CAP
+};
+// Background consumes system:schedule:* events itself (unlike the sidebar's
+// own subscription, which has its own dedupe), so it needs its own bounded
+// event_id cache — sticky replay redelivers the same snapshot/state_changed
+// event on every reconnect and must not be double-counted.
+const SCHEDULE_EVENT_DEDUPE_CAP = 512;
+
+/**
+ * Ensure the background-owned `system:schedule:*` subscription is tracked
+ * before NativeChannel#connect() calls replaySubscriptions() on the CHAT
+ * channel, so it rides every (re)connect's resubscribe wave the same way
+ * bridge/sidebar subscriptions do. Idempotent — safe to call on every
+ * connect.
+ */
+function ensureBackgroundScheduleSubscription() {
+  if (eventBusSubscriptions.has('bg-schedule')) return;
+  eventBusSubscriptions.set('bg-schedule', {
+    source: 'background',
+    tabId: null,
+    bridgeId: null,
+    patterns: ['system:schedule:*'],
+  });
+}
+
+/**
+ * Ensure the background-owned `ui:notification:agent` subscription is tracked,
+ * so `notify_user` reminders fire an OS notification even when the sidebar is
+ * closed (the sidebar has its own `ui:notification:*` subscription for the
+ * in-app toast). Idempotent; registered alongside the schedule subscription.
+ */
+function ensureBackgroundNotifySubscription() {
+  if (eventBusSubscriptions.has('bg-notify')) return;
+  eventBusSubscriptions.set('bg-notify', {
+    source: 'background',
+    tabId: null,
+    bridgeId: null,
+    patterns: ['ui:notification:agent'],
+  });
+}
+
+// Bounded FIFO dedupe for background-consumed notification events (sticky
+// replay / reconnect can redeliver the same event_id).
+const notifySeenEventIds = [];
+const NOTIFY_EVENT_DEDUPE_CAP = 256;
+
+/**
+ * Handle a delivered `ui:notification:agent` event routed to the
+ * background-owned 'bg-notify' subscription. Fires an OS notification via
+ * `browser.notifications.create` only when the notification came from the
+ * `notify_user` tool AND no browser window is currently focused (mirroring the
+ * avatar's "OS notification only when unfocused" gate). The in-app toast is
+ * handled separately by the sidebar's own subscription.
+ */
+async function handleUserNotification(event) {
+  const eventId = event?.event_id;
+  if (eventId) {
+    if (notifySeenEventIds.includes(eventId)) return;
+    notifySeenEventIds.push(eventId);
+    if (notifySeenEventIds.length > NOTIFY_EVENT_DEDUPE_CAP) {
+      notifySeenEventIds.shift();
+    }
+  }
+
+  const data = event?.payload || {};
+  if (data.source !== 'notify_user') return;
+  // `body` is the canonical toast/notification text (matches the sidebar
+  // renderer); tolerate `message` as a fallback.
+  const raw = typeof data.body === 'string' ? data.body : data.message;
+  const message = typeof raw === 'string' ? raw.trim() : '';
+  if (!message) return;
+  const title = typeof data.title === 'string' && data.title.trim() ? data.title.trim() : 'NevoFlux';
+
+  // Only surface an OS notification when the browser is unfocused; when a
+  // window is focused the sidebar toast already reaches the user.
+  let focused = true;
+  try {
+    focused = (await browser.windows.getLastFocused({})).focused;
+  } catch (e) {
+    focused = false;
+  }
+  if (focused) return;
+
+  try {
+    browser.notifications.create(`nevoflux-notify-${eventId || Date.now()}`, {
+      type: 'basic',
+      iconUrl: browser.runtime.getURL('icons/icon-48.png'),
+      title,
+      message,
+    });
+  } catch (err) {
+    console.warn('[NevoFlux] notify_user OS notification failed:', err);
+  }
+}
+
+/**
+ * Handle a delivered `system:schedule:*` EventBus event routed to the
+ * background-owned 'bg-schedule' subscription (see the fan-out loop's
+ * `sub.source === 'background'` branch). `event` is the BusEventPayload
+ * wire shape: `{ event_id, topic, payload, delivery, publisher, timestamp_ms }`.
+ *
+ * Dedupes by `event_id` (sticky replay redelivers the same snapshot/
+ * state_changed event on every reconnect), folds the event into
+ * scheduleJobsState, and pushes the derived badge to AvatarController.
+ */
+function handleScheduleEvent(event) {
+  const eventId = event?.event_id;
+  if (eventId) {
+    if (scheduleJobsState.seenEventIds.includes(eventId)) return;
+    scheduleJobsState.seenEventIds.push(eventId);
+    if (scheduleJobsState.seenEventIds.length > SCHEDULE_EVENT_DEDUPE_CAP) {
+      scheduleJobsState.seenEventIds.shift();
+    }
+  }
+
+  const topic = event?.topic || '';
+  const prefix = 'system:schedule:';
+  if (!topic.startsWith(prefix)) return;
+  const suffix = topic.slice(prefix.length);
+  const data = event?.payload || {};
+
+  const upsertSchedule = (id, patch) => {
+    if (!id) return;
+    const existing = scheduleJobsState.schedules.get(id) || {};
+    scheduleJobsState.schedules.set(id, { ...existing, ...patch });
+  };
+
+  switch (suffix) {
+    case 'snapshot':
+      // Sticky aggregate, republished after every transition — authoritative
+      // for the badge (see ScheduleEvents::snapshot in the daemon).
+      scheduleJobsState.lastSnapshot = {
+        active: data.active ?? 0,
+        running: data.running ?? 0,
+        failed_recent: data.failed_recent ?? 0,
+        next_fire_at: data.next_fire_at ?? null,
+      };
+      // Per-schedule running/last_run_status hints only exist to refine the
+      // badge in the brief window before their matching snapshot arrives —
+      // clear them now so a hint can never outlive its snapshot (e.g. a run
+      // that crashes without a run_end, or a failed schedule that gets
+      // cancelled, must not pin the badge red/running forever).
+      for (const sched of scheduleJobsState.schedules.values()) {
+        delete sched.running;
+        delete sched.last_run_status;
+      }
+      break;
+
+    case 'created':
+      upsertSchedule(data.schedule_id, {
+        name: data.name,
+        status: data.status,
+        next_fire_at: data.next_fire_at,
+      });
+      break;
+
+    case 'state_changed':
+      upsertSchedule(data.schedule_id, {
+        name: data.name,
+        status: data.new_status,
+        next_fire_at: data.next_fire_at,
+      });
+      break;
+
+    case 'run_start':
+      upsertSchedule(data.schedule_id, { name: data.name, running: true });
+      break;
+
+    case 'run_end':
+      upsertSchedule(data.schedule_id, {
+        name: data.name,
+        running: false,
+        last_run_status: data.status,
+      });
+      break;
+
+    case 'missed':
+      upsertSchedule(data.schedule_id, { name: data.name, last_run_status: 'missed' });
+      break;
+
+    default:
+      // Unknown/forward-compat topic suffix under system:schedule:* — dedupe
+      // is already recorded above; nothing further to fold into state.
+      return;
+  }
+
+  AvatarController.setJobs(deriveScheduleJobsBadge());
+}
+
+/**
+ * Derive the aggregate avatar badge from scheduleJobsState.
+ * Precedence: failed > running > healthy > none.
+ *
+ * The sticky `snapshot` aggregate is authoritative (the daemon republishes
+ * it after every transition); per-schedule run_start/run_end/missed/
+ * state_changed hints refine 'running'/'failed' for the brief window
+ * between snapshots.
+ */
+function deriveScheduleJobsBadge() {
+  const snap = scheduleJobsState.lastSnapshot;
+  let failed = !!snap && snap.failed_recent > 0;
+  let running = !!snap && snap.running > 0;
+  const active = !!snap && snap.active > 0;
+
+  for (const sched of scheduleJobsState.schedules.values()) {
+    if (sched.last_run_status === 'error' || sched.last_run_status === 'missed') failed = true;
+    if (sched.running) running = true;
+  }
+
+  if (failed) return 'failed';
+  if (running) return 'running';
+  if (active) return 'healthy';
+  return 'none';
+}
 
 // Recording state: tabId → { recording_id, goal_hint }
 // Survives navigation (lives in background, which is extension-global).
@@ -652,6 +881,11 @@ class NativeChannel {
       // re-send them or downstream subscribers (sidebar, bridge) stop
       // receiving events. Only the Chat channel carries EventBus traffic.
       if (this.name === CHANNEL_NAMES.CHAT) {
+        // Register the background-owned schedule subscription BEFORE replay
+        // so it's included in this connect's resubscribe wave (and every
+        // future reconnect's), regardless of whether the sidebar is open.
+        ensureBackgroundScheduleSubscription();
+        ensureBackgroundNotifySubscription();
         this.replaySubscriptions();
       }
 
@@ -1171,6 +1405,16 @@ class ChannelManager {
             type: MessageTypes.EVENTS_DELIVERY,
             payload: pushPayload,
           });
+        } else if (sub.source === 'background') {
+          // Background's own subscriptions feed the avatar jobs badge and the
+          // notify_user OS notification directly — no sidebar broadcast here
+          // (the sidebar has its own subscriptions; broadcasting would
+          // double-deliver). Dispatch by subscription id.
+          if (subId === 'bg-notify') {
+            handleUserNotification(eventPayload.event);
+          } else {
+            handleScheduleEvent(eventPayload.event);
+          }
         }
       }
       // Don't fall through to sidebar broadcast — we handled routing above
@@ -1630,6 +1874,11 @@ class ChannelManager {
         // daemon's oneshot never fires (30s timeout, no recording armed).
         'recording_start',
         'recording_stop',
+        // canvas_eval runs JS inside the artifact iframe entirely in
+        // background.js (find canvas tab by artifact_id → browser.nevoflux
+        // .canvasEval → NevofluxChild.evalInIframe). The sidebar WASM has no
+        // handler, so forwarding there silently drops it → 30s timeout.
+        'canvas_eval',
       ]);
       // In headless automation mode there is no sidebar, so every browser tool
       // must execute directly in the background (P1/A2). executeBrowserTool is
@@ -1796,6 +2045,11 @@ const AvatarController = {
   // Session context cached from the last bg:agent_minimize message. Used by
   // avatar:maximize to open the correct maximized view with the right session.
   lastSessionContext: null,
+  // Aggregate schedule badge ('failed'|'running'|'healthy'|'none'), driven by
+  // handleScheduleEvent via setJobs(). Composed into every pushed status
+  // string (see _withJobsSuffix) so it survives independently of the
+  // idle/working/needs-you/offline state and any transient bubble text.
+  jobsBadge: 'none',
 
   show() {
     if (this.shown) return;
@@ -1906,8 +2160,26 @@ const AvatarController = {
 
   _lastPromptAt: 0,
 
+  // Append '|jobs:<badge>' to an already-composed status string, unless the
+  // badge is 'none' (nothing to show). Shared by pushState() and fire() so
+  // the jobs badge survives alongside bubble text — the avatar-side parser
+  // (Task 5.2) reads '|'-delimited parts independent of order, so
+  // 'working|bubble:X|jobs:running' is valid.
+  _withJobsSuffix(status) {
+    return this.jobsBadge && this.jobsBadge !== 'none' ? `${status}|jobs:${this.jobsBadge}` : status;
+  },
+
+  // Called by handleScheduleEvent() whenever the derived schedule badge
+  // changes. Stored unconditionally (so it self-primes the next show()/
+  // pushState() even while hidden); only pushed to chrome immediately when
+  // the avatar is currently shown.
+  setJobs(badge) {
+    this.jobsBadge = badge;
+    if (this.shown) this.pushState();
+  },
+
   pushState() {
-    browser.nevoflux.setAgentStatus(this.machine.getState()).catch(() => {});
+    browser.nevoflux.setAgentStatus(this._withJobsSuffix(this.machine.getState())).catch(() => {});
   },
 
   async onEvent(kind) {
@@ -1927,7 +2199,9 @@ const AvatarController = {
 
   fire(prompt) {
     // Bubble always; OS notification only when unfocused.
-    browser.nevoflux.setAgentStatus(`${this.machine.getState()}|bubble:${prompt.bubble}`).catch(() => {});
+    browser.nevoflux
+      .setAgentStatus(this._withJobsSuffix(`${this.machine.getState()}|bubble:${prompt.bubble}`))
+      .catch(() => {});
     if (prompt.os) {
       browser.notifications.create(`nevoflux-avatar-${Date.now()}`, {
         type: 'basic',
@@ -3547,6 +3821,8 @@ async function executeBrowserTool(request, caller = 'unknown') {
     'read_artifact',
     'edit_artifact',
     'canvas_render',
+    // canvas_eval addresses the target canvas tab by artifact_id itself.
+    'canvas_eval',
     // Visual-identity extraction handles its own tab lifecycle: URL mode
     // creates a background tab; tab mode reads target.tab_id from params.
     // Adding to this set prevents the dispatcher from rejecting URL-mode
@@ -3628,6 +3904,9 @@ async function executeBrowserTool(request, caller = 'unknown') {
       // JavaScript execution
       case 'eval_js':
         return await executeEvalJsViaApi(targetTabId, params);
+
+      case 'canvas_eval':
+        return await executeCanvasEval(params);
 
       // Waiting
       case 'wait_for':
@@ -5111,6 +5390,55 @@ async function executeEvalJsViaApi(tabId, params) {
   try {
     const result = await browser.nevoflux.eval(tabId, script);
     return result.success !== undefined ? result : { success: true, result };
+  } catch (error) {
+    return { success: false, error: { code: -1, message: error.message, recoverable: true } };
+  }
+}
+
+/**
+ * Run a JS snippet inside a canvas artifact's iframe via the privileged
+ * canvasEval bridge, addressing the canvas tab by artifact_id (spec §6).
+ */
+async function executeCanvasEval(params) {
+  const { artifact_id: artifactId, script, timeout_ms: timeoutMs } = params || {};
+  if (!artifactId || !script) {
+    return {
+      success: false,
+      error: { code: -1, message: 'artifact_id and script are required', recoverable: false },
+    };
+  }
+  // Locate the open canvas tab for this artifact.
+  let tabId = null;
+  try {
+    const tabs = await browser.tabs.query({ currentWindow: true });
+    const target = tabs.find((t) => t.url === `nevoflux://canvas/${artifactId}`);
+    if (target) tabId = target.id;
+  } catch (e) {
+    console.error('[NevoFlux] canvas_eval: tab query failed:', e);
+  }
+  if (tabId == null) {
+    return {
+      success: false,
+      error: {
+        code: -1,
+        message: `CANVAS_TAB_NOT_FOUND: no open canvas tab for artifact ${artifactId}`,
+        recoverable: true,
+      },
+    };
+  }
+  // Bring the canvas tab to the foreground before evaluating. The turn-start
+  // viewport snapshot runs on a regular web tab (getActiveTabId excludes the
+  // nevoflux:// canvas tab), which pulls focus off the canvas tab and can let
+  // Firefox discard it. Re-activating here makes canvas_eval self-sufficient
+  // (its iframe stays live) so the user never has to click back to the tab.
+  try {
+    await browser.tabs.update(tabId, { active: true });
+  } catch (e) {
+    console.warn('[NevoFlux] canvas_eval: could not activate canvas tab:', e);
+  }
+  try {
+    const result = await browser.nevoflux.canvasEval(tabId, script, { timeoutMs });
+    return result?.success !== undefined ? result : { success: true, result };
   } catch (error) {
     return { success: false, error: { code: -1, message: error.message, recoverable: true } };
   }
@@ -7673,6 +8001,18 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
         }
       })();
       return true;
+    }
+
+    case BackgroundAPI.SCHEDULE_BADGE_STATE: {
+      // Cheap synchronous read of background's own system:schedule:*
+      // aggregate — lets a (re)opened sidebar prime its Jobs UI immediately
+      // instead of waiting on its own subscription's sticky replay.
+      sendResponse({
+        success: true,
+        badge: deriveScheduleJobsBadge(),
+        snapshot: scheduleJobsState.lastSnapshot,
+      });
+      break;
     }
 
     case BackgroundAPI.EVENTS_SUBSCRIBE: {

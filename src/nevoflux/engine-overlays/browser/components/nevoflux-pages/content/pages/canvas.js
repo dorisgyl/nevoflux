@@ -242,6 +242,43 @@ const Canvas = {
       return;
     }
 
+    // Parent-initiated eval (canvas_eval tool): run a snippet in THIS iframe's
+    // context (where the app's DOM lives) and post the value back. element.click()
+    // here is a real click; reading the DOM returns the real runtime value.
+    if (e.data.__nevofluxEval === 'request') {
+      var reply = { _nevoflux: true, __nevofluxEval: 'response', evalId: e.data.evalId };
+      try {
+        // Try indirect eval first (global scope; last expression is the value).
+        // If the script uses a top-level return (common — the agent writes
+        // "...click(); return el.textContent;"), indirect eval throws a
+        // SyntaxError "return not in function"; retry as a Function body so
+        // return works. NOTE: no backticks here — this runs inside a
+        // template-literal SDK string.
+        var _r;
+        try {
+          _r = (0, eval)(e.data.script);
+        } catch (evalErr) {
+          if (evalErr instanceof SyntaxError && /return/i.test(evalErr.message || '')) {
+            _r = new Function(e.data.script)();
+          } else {
+            throw evalErr;
+          }
+        }
+        Promise.resolve(_r).then(function(val) {
+          try { reply.ok = true; reply.result = JSON.parse(JSON.stringify(val === undefined ? null : val)); }
+          catch (_) { reply.ok = true; reply.result = String(val); }
+          window.parent.postMessage(reply, "*");
+        }, function(err) {
+          reply.ok = false; reply.error = String(err && err.message || err);
+          window.parent.postMessage(reply, "*");
+        });
+      } catch (err) {
+        reply.ok = false; reply.error = String(err && err.message || err);
+        window.parent.postMessage(reply, "*");
+      }
+      return;
+    }
+
     // Handle EventBus delivery push messages
     if (e.data.type === 'events:delivery') {
       var handlers = window._nevofluxEventHandlers || {};

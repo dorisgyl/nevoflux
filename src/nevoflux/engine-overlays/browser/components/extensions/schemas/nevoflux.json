@@ -1283,6 +1283,22 @@
         "returns": { "$ref": "EvalResult" }
       },
       {
+        "name": "canvasEval",
+        "type": "function",
+        "async": "promise",
+        "description": "Run JavaScript inside a canvas tab's artifact iframe (async postMessage round-trip) and return the last expression's value",
+        "parameters": [
+          { "name": "tabId", "type": "integer", "optional": true },
+          { "name": "script", "type": "string" },
+          {
+            "name": "options",
+            "type": "object",
+            "optional": true,
+            "additionalProperties": true
+          }
+        ]
+      },
+      {
         "name": "addScript",
         "type": "function",
         "async": "promise",

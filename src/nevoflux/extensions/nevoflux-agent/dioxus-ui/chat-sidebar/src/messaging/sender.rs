@@ -11,6 +11,7 @@
 //! - `bg:get_tab_context` - Get current tab context
 
 use crate::messaging::bridge::*;
+use crate::state::ScheduleJobState;
 use shared_protocol::{chat::TabReference, *};
 use wasm_bindgen_futures::{spawn_local, JsFuture};
 
@@ -1191,6 +1192,12 @@ pub async fn query_agent_status() -> Result<serde_json::Value, String> {
 ///
 /// On success returns the created/updated slug. On failure returns the daemon
 /// error message; a `BRAIN_DISABLED` code is surfaced as a friendly hint.
+///
+/// NOTE: the header "Save as concept" button (its sole caller) was removed in
+/// Task 5.3 (replaced by the Jobs calendar button). The daemon
+/// `brain.save_conversation` RPC still exists, so this bridge is retained
+/// `#[allow(dead_code)]` for future re-wiring rather than deleted.
+#[allow(dead_code)]
 pub async fn save_conversation_to_kb(
     title: &str,
     content: &str,
@@ -1251,6 +1258,137 @@ pub async fn save_conversation_to_kb(
             .unwrap_or("unknown error")
             .to_string())
     }
+}
+
+// ============================================
+// Schedule Commands (/schedule Jobs panel)
+// ============================================
+
+/// Shared awaitable `bg:system_command` round-trip.
+///
+/// Sends `{type:"bg:system_command", command, params}` to background.js, which
+/// forwards it to the native agent and returns the inner system_response
+/// payload `{success, data, error}`. Returns `data` on success, or the daemon
+/// error message on failure. Mirrors [`save_conversation_to_kb`]'s envelope.
+async fn system_command(
+    command: &str,
+    params: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let request = serde_json::json!({
+        "type": "bg:system_command",
+        "command": command,
+        "params": params,
+    });
+
+    let js_value = to_js_value(&request).map_err(|e| format!("Serialize error: {:?}", e))?;
+
+    let response = JsFuture::from(runtime_send_message(js_value))
+        .await
+        .map_err(|e| format!("Send failed: {:?}", e))?;
+
+    if response.is_undefined() || response.is_null() {
+        return Err("bg:system_command returned undefined/null".to_string());
+    }
+
+    let response_obj: serde_json::Value = from_js_value(response)
+        .map_err(|e| format!("Parse {} response error: {}", command, e))?;
+
+    if response_obj
+        .get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        Ok(response_obj
+            .get("data")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null))
+    } else {
+        Err(response_obj
+            .get("error")
+            .and_then(|e| e.get("message"))
+            .and_then(|m| m.as_str())
+            .unwrap_or("unknown error")
+            .to_string())
+    }
+}
+
+/// `schedule.list` — full authoritative snapshot of all schedules.
+/// Returns them deserialized straight into [`ScheduleJobState`].
+pub async fn schedule_list() -> Result<Vec<ScheduleJobState>, String> {
+    let data = system_command("schedule.list", serde_json::json!({})).await?;
+    let arr = data
+        .get("schedules")
+        .and_then(|s| s.as_array())
+        .cloned()
+        .unwrap_or_default();
+    Ok(arr
+        .into_iter()
+        .filter_map(|v| serde_json::from_value::<ScheduleJobState>(v).ok())
+        .collect())
+}
+
+/// `schedule.runs` — recent run history for one schedule.
+/// Returns the raw run objects (`run_id, started_at, ended_at, status,
+/// fire_kind, error, tokens_used, goal_turns`) for lazy rendering.
+pub async fn schedule_runs(
+    schedule_id: &str,
+    limit: i64,
+    include_final_text: bool,
+) -> Result<Vec<serde_json::Value>, String> {
+    let data = system_command(
+        "schedule.runs",
+        serde_json::json!({
+            "schedule_id": schedule_id,
+            "limit": limit,
+            "include_final_text": include_final_text,
+        }),
+    )
+    .await?;
+    Ok(data
+        .get("runs")
+        .and_then(|r| r.as_array())
+        .cloned()
+        .unwrap_or_default())
+}
+
+/// `schedule.pause` — pause a schedule (no more fires until resumed).
+pub async fn schedule_pause(schedule_id: &str) -> Result<(), String> {
+    system_command(
+        "schedule.pause",
+        serde_json::json!({ "schedule_id": schedule_id }),
+    )
+    .await
+    .map(|_| ())
+}
+
+/// `schedule.resume` — resume a paused schedule.
+pub async fn schedule_resume(schedule_id: &str) -> Result<(), String> {
+    system_command(
+        "schedule.resume",
+        serde_json::json!({ "schedule_id": schedule_id }),
+    )
+    .await
+    .map(|_| ())
+}
+
+/// `schedule.cancel` — permanently cancel a schedule (removed from the panel).
+pub async fn schedule_cancel(schedule_id: &str) -> Result<(), String> {
+    system_command(
+        "schedule.cancel",
+        serde_json::json!({ "schedule_id": schedule_id }),
+    )
+    .await
+    .map(|_| ())
+}
+
+/// `schedule.run_now` — trigger an immediate manual run.
+pub async fn schedule_run_now(schedule_id: &str) -> Result<(), String> {
+    system_command(
+        "schedule.run_now",
+        serde_json::json!({ "schedule_id": schedule_id }),
+    )
+    .await
+    .map(|_| ())
 }
 
 // ============================================

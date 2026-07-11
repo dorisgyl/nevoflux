@@ -110,6 +110,44 @@ Use either `content` (single-file) or `files` + `entry` (project), not both.
 - **No inline event handlers** (`onclick="..."`). Use `addEventListener` or React's `onClick`.
 - `callTool` returns `{ success, result, error }` — always check `success` before using `result`.
 
+## Making Canvas Apps Verifiable (`canvas_eval` + `/goal`)
+
+An artifact renders in a sandboxed, out-of-process iframe, so it **cannot be driven by the normal browser tools** (`browser_click`/`browser_type` target real web tabs, not the `nevoflux://canvas/...` page). To let the agent *operate and verify* a running app — the core of a "build → run → check → fix" `/goal` loop — build every interactive app to this convention, then use the `canvas_eval` tool.
+
+**Convention (always follow for interactive apps):**
+
+1. **Stable selectors on every interactive element.** Give each button/input a stable `data-testid` (or `id`). Never rely on text or position.
+2. **Stable selectors on every output/state element.** e.g. the display of a calculator: `<div id="display">`.
+3. **Optional state probe for complex apps:** expose a read-only `window.__canvasApp = { getState() { return { display: document.getElementById('display').textContent }; } }`. Simple apps can be read directly from the DOM.
+4. **Inline everything** (already required) so the app runs standalone in the iframe.
+
+**`canvas_eval` tool** — runs a JS snippet *inside* the artifact's iframe (where the DOM and `NevofluxSDK` live) and returns the last expression's value to the agent:
+
+```
+canvas_eval { artifact_id: "art-...", script: "<js>", timeout_ms?: 5000 }
+→ { success, result }
+```
+
+Inside the iframe `element.click()` is a **real click** (fires the app's real handlers) and reading the DOM returns the **real runtime value**. Example — verify a calculator computes `3*5`:
+
+```js
+// canvas_eval script:
+['btn-3','btn-mul','btn-5','btn-eq'].forEach(t =>
+  document.querySelector(`[data-testid="${t}"]`).click());
+return document.getElementById('display').textContent;   // → "15"
+```
+
+**Pairing with `/goal`:** create the artifact (that turn ends), then on the continuation turn `canvas_eval` to drive + read it, and let a programmatic `check` decide completion without a model:
+
+```
+goal_set {
+  condition: "the calculator computes 3*5 = 15",
+  check: { tool: "canvas_eval", matches: "15" }
+}
+```
+
+If the value is wrong, `browser_edit_artifact` to fix the logic, then `canvas_eval` again — repeat until the check matches or the turn budget is spent.
+
 ## NevofluxSDK API
 
 ### Storage (persistent key-value)

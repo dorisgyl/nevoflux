@@ -16,6 +16,7 @@ mod ask_user;
 mod file_picker;
 mod tools;
 pub mod render_job;
+mod schedule;
 
 pub use session::*;
 pub use message::*;
@@ -29,6 +30,7 @@ pub use ask_user::*;
 pub use file_picker::*;
 pub use tools::*;
 pub use render_job::RenderJobEntry;
+pub use schedule::ScheduleJobState;
 
 /// Skill information for the skill selector
 #[derive(Debug, Clone, PartialEq)]
@@ -47,4 +49,7 @@ pub struct MaximizeState {
     pub source_tab_id: Option<i32>,
     /// The tab ID that the AI agent operates on
     pub target_tab_id: Option<i32>,
+    /// Deep-link panel to open on boot (e.g. `panel=jobs` opens the Jobs
+    /// panel). Set by the header calendar button's maximize-jump.
+    pub panel: Option<String>,
 }

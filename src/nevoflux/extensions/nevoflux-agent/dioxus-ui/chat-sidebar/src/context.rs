@@ -101,6 +101,18 @@ pub struct AppContext {
     pub message_render_job_ids: Signal<std::collections::HashMap<String, Vec<String>>>,
     /// Per-loop state, keyed by loop_id, populated from system:loop:* events.
     pub loops: Signal<std::collections::HashMap<String, crate::state::LoopState>>,
+    /// Per-schedule state, keyed by schedule_id, populated from
+    /// `system:schedule:*` events + `schedule.list` reconciliation.
+    pub schedule_jobs: Signal<std::collections::HashMap<String, crate::state::ScheduleJobState>>,
+    /// Whether to show the Jobs panel overlay.
+    pub show_jobs_panel: Signal<bool>,
+    /// Whether to show the Loop Jobs panel overlay (maximized mode only).
+    /// Mutually exclusive with `show_jobs_panel`.
+    pub show_loops_panel: Signal<bool>,
+    /// Latest `system:schedule:snapshot` aggregate
+    /// (`{active, running, failed_recent, next_fire_at}`). Drives the header
+    /// calendar-badge state even before the per-schedule map is fully primed.
+    pub schedule_snapshot: Signal<Option<serde_json::Value>>,
     /// Whether mock mode is enabled
     pub mock_enabled: bool,
 }
@@ -140,6 +152,12 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
     let render_jobs = use_signal(std::collections::HashMap::new);
     let message_render_job_ids = use_signal(std::collections::HashMap::new);
     let loops = use_signal(std::collections::HashMap::new);
+    let schedule_jobs = use_signal(std::collections::HashMap::new);
+    // Open the Jobs panel immediately when the maximize-jump deep-linked it
+    // (`?panel=jobs`).
+    let show_jobs_panel = use_signal(|| parse_maximize_params().panel.as_deref() == Some("jobs"));
+    let show_loops_panel = use_signal(|| parse_maximize_params().panel.as_deref() == Some("loops"));
+    let schedule_snapshot = use_signal(|| None::<serde_json::Value>);
     let mut first_run = use_signal(|| false);
     let mut has_configured_provider = use_signal(|| false);
     let mut setup_authoritative = use_signal(|| false);
@@ -174,6 +192,10 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
         render_jobs,
         message_render_job_ids,
         loops,
+        schedule_jobs,
+        show_jobs_panel,
+        show_loops_panel,
+        schedule_snapshot,
         first_run,
         has_configured_provider,
         setup_authoritative,
@@ -265,6 +287,22 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
                         "EventBus subscribe to ui:notification:*, jobs:render:*, system:loop:* failed: {}",
                         e
                     );
+                }
+
+                // Separate subscription for `system:schedule:*` with
+                // replay_sticky=TRUE — the sticky `state_changed`/`snapshot`
+                // events prime `ctx.schedule_jobs` + the header calendar badge
+                // on every sidebar (re)open, without waiting for the next
+                // schedule transition. (The loop subscription above keeps
+                // replay_sticky=false; loops have no sticky priming need.)
+                if let Err(e) = crate::messaging::send_events_subscribe(
+                    vec!["system:schedule:*".to_string()],
+                    true,
+                    256,
+                )
+                .await
+                {
+                    tracing::warn!("EventBus subscribe to system:schedule:* failed: {}", e);
                 }
 
                 // Resolve window-session binding
@@ -443,10 +481,13 @@ pub fn parse_maximize_params() -> MaximizeState {
     let target_tab_id = extract_url_param(&search, "target_tab_id")
         .and_then(|s| s.parse::<i32>().ok());
 
+    let panel = extract_url_param(&search, "panel");
+
     MaximizeState {
         is_maximized,
         source_tab_id,
         target_tab_id,
+        panel,
     }
 }
 

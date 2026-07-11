@@ -6,61 +6,8 @@
 
 use crate::bindings::nevoflux_api;
 use crate::context::{use_app_context, AppContext};
-use crate::state::{Message, MessageContent, MessageRole};
 use dioxus::prelude::*;
 use wasm_bindgen_futures::spawn_local;
-
-/// Render the current conversation as a markdown transcript and derive a title.
-///
-/// Title = the first user message (trimmed/truncated), or a timestamped
-/// fallback if there is none. Content = a `**Role:** text` transcript of all
-/// text-bearing messages.
-fn build_conversation_markdown(messages: &[Message]) -> Option<(String, String)> {
-    let mut lines: Vec<String> = Vec::new();
-    let mut title: Option<String> = None;
-
-    for msg in messages {
-        let text = match &msg.content {
-            MessageContent::Text(t) | MessageContent::Markdown(t) => t.clone(),
-            MessageContent::Code { language, code } => {
-                format!("```{}\n{}\n```", language, code)
-            }
-            // Skip non-textual cards (plan/artifact/error) in the transcript.
-            _ => continue,
-        };
-        if text.trim().is_empty() {
-            continue;
-        }
-
-        let role = match msg.role {
-            MessageRole::User => "User",
-            MessageRole::Assistant => "Assistant",
-            MessageRole::System => "System",
-        };
-
-        if title.is_none() && msg.role == MessageRole::User {
-            let t = text.trim();
-            let truncated: String = t.chars().take(80).collect();
-            title = Some(if t.chars().count() > 80 {
-                format!("{}…", truncated)
-            } else {
-                truncated
-            });
-        }
-
-        lines.push(format!("**{}:** {}", role, text.trim()));
-    }
-
-    if lines.is_empty() {
-        return None;
-    }
-
-    let title = title.unwrap_or_else(|| {
-        let iso = String::from(js_sys::Date::new_0().to_iso_string());
-        format!("Conversation {}", iso)
-    });
-    Some((title, lines.join("\n\n")))
-}
 
 /// Header component with History and Maximize buttons
 #[component]
@@ -115,7 +62,7 @@ pub fn Header() -> Element {
 
             let ctx = ctx.clone();
             spawn_local(async move {
-                if let Err(e) = do_maximize(ctx).await {
+                if let Err(e) = do_maximize(ctx, "").await {
                     tracing::error!("Failed to maximize: {}", e);
                 }
             });
@@ -136,51 +83,65 @@ pub fn Header() -> Element {
         }
     };
 
-    // "Save as concept" feedback state: None = idle, Some(true) = saving,
-    // Some(false) handled via title text below.
-    let mut kb_saving = use_signal(|| false);
-    let mut kb_status: Signal<Option<String>> = use_signal(|| None);
-
-    // Handle "Save as concept": serialize the conversation and call the daemon
-    // brain.save_conversation RPC via the existing bg:system_command path.
-    let handle_save_concept = {
-        let ctx = ctx.clone();
-        move |_| {
-            if *kb_saving.read() {
-                return;
-            }
-            let messages = ctx.messages.read().clone();
-            let session_id = ctx.session.read().id.clone();
-
-            let Some((title, content)) = build_conversation_markdown(&messages) else {
-                kb_status.set(Some("Nothing to save yet".to_string()));
-                return;
-            };
-
-            kb_saving.set(true);
-            kb_status.set(Some("Saving…".to_string()));
-            spawn_local(async move {
-                match crate::messaging::save_conversation_to_kb(&title, &content, Some(&session_id))
-                    .await
-                {
-                    Ok(slug) => {
-                        tracing::info!("Saved conversation to KB: {}", slug);
-                        kb_status.set(Some(format!("Saved: {}", slug)));
-                    }
-                    Err(e) => {
-                        tracing::error!("Save as concept failed: {}", e);
-                        kb_status.set(Some(e));
-                    }
-                }
-                kb_saving.set(false);
-            });
-        }
+    // Scheduled-jobs calendar button. `has_jobs`/`jobs_failed` derive from BOTH
+    // the per-schedule map and the aggregate snapshot: on a fresh sidebar the
+    // map may be sparse (only sticky `state_changed` primed it), so the sticky
+    // `snapshot` aggregate (`active`/`failed_recent`) backstops the dot state.
+    let (has_jobs, jobs_failed) = {
+        let schedule_jobs = ctx.schedule_jobs.read();
+        let snapshot = ctx.schedule_snapshot.read();
+        // Count only non-terminal (live) schedules. Terminal rows (`cancelled`/
+        // `ran`) must never light the badge — belt-and-braces against any event
+        // path that could leave a terminal entry in the map.
+        let is_live = |j: &crate::state::ScheduleJobState| j.status != "cancelled" && j.status != "ran";
+        let map_has = schedule_jobs.values().any(is_live);
+        let snap_active = snapshot
+            .as_ref()
+            .and_then(|s| s.get("active"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0)
+            > 0;
+        let map_failed = schedule_jobs.values().any(|j| {
+            is_live(j) && matches!(j.last_run_status.as_deref(), Some("error") | Some("missed"))
+        });
+        let snap_failed = snapshot
+            .as_ref()
+            .and_then(|s| s.get("failed_recent"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0)
+            > 0;
+        (map_has || snap_active, map_failed || snap_failed)
     };
 
-    let kb_title = kb_status
-        .read()
-        .clone()
-        .unwrap_or_else(|| "Save conversation as concept".to_string());
+    let jobs_btn_class = if has_jobs {
+        "header-btn jobs-btn has-jobs"
+    } else {
+        "header-btn jobs-btn"
+    };
+
+    // Calendar click: when NOT maximized, jump to the maximized form with the
+    // Jobs panel deep-linked (`&panel=jobs`); when already maximized, just
+    // toggle the panel (confirmed decision).
+    let toggle_jobs = {
+        let ctx = ctx.clone();
+        move |_| {
+            if is_maximized {
+                let mut ctx = ctx.clone();
+                let current = *ctx.show_jobs_panel.read();
+                ctx.show_jobs_panel.set(!current);
+            } else {
+                // Preserve the user gesture: close the sidebar synchronously
+                // before the async tab open (mirrors handle_maximize).
+                nevoflux_api::try_close_sidebar_sync();
+                let ctx = ctx.clone();
+                spawn_local(async move {
+                    if let Err(e) = do_maximize(ctx, "&panel=jobs").await {
+                        tracing::error!("Failed to maximize to Jobs: {}", e);
+                    }
+                });
+            }
+        }
+    };
 
     // Read avatar
     let avatar = ctx.avatar_url.read();
@@ -202,24 +163,32 @@ pub fn Header() -> Element {
 
             // Right side: Action buttons
             div { class: "header-right",
-                // Save as concept button (M4-5 A3): save conversation to KB
+                // Scheduled jobs (calendar) button
                 button {
-                    class: "header-btn save-concept-btn",
-                    aria_label: "Save as concept",
-                    title: "{kb_title}",
-                    disabled: *kb_saving.read(),
-                    onclick: handle_save_concept,
-                    // Bookmark / save icon
+                    class: "{jobs_btn_class}",
+                    aria_label: "Scheduled jobs",
+                    title: "Scheduled jobs",
+                    onclick: toggle_jobs,
                     svg {
-                        width: "16",
-                        height: "16",
+                        xmlns: "http://www.w3.org/2000/svg",
                         view_box: "0 0 24 24",
                         fill: "none",
                         stroke: "currentColor",
                         stroke_width: "2",
                         stroke_linecap: "round",
                         stroke_linejoin: "round",
-                        path { d: "M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" }
+                        width: "16",
+                        height: "16",
+                        rect { x: "3", y: "4", width: "18", height: "18", rx: "2" }
+                        line { x1: "16", y1: "2", x2: "16", y2: "6" }
+                        line { x1: "8", y1: "2", x2: "8", y2: "6" }
+                        line { x1: "3", y1: "10", x2: "21", y2: "10" }
+                        circle { cx: "12", cy: "16", r: "2", fill: "currentColor", stroke: "none" }
+                    }
+                    if jobs_failed {
+                        span { class: "jobs-btn-dot failed" }
+                    } else if has_jobs {
+                        span { class: "jobs-btn-dot" }
                     }
                 }
 
@@ -318,8 +287,12 @@ pub fn Header() -> Element {
 
 // ==================== Maximize/Restore Logic ====================
 
-/// Maximize: open chat in new tab, close sidebar
-async fn do_maximize(ctx: AppContext) -> Result<(), String> {
+/// Maximize: open chat in new tab, close sidebar.
+///
+/// `extra_query` is appended verbatim to the maximized URL's query string
+/// (must start with `&`, e.g. `"&panel=jobs"`), so callers can deep-link a
+/// panel to open on boot. Pass `""` for a plain maximize.
+async fn do_maximize(ctx: AppContext, extra_query: &str) -> Result<(), String> {
     // Get session_id from current session
     let session_id = ctx.session.read().id.clone();
 
@@ -339,8 +312,8 @@ async fn do_maximize(ctx: AppContext) -> Result<(), String> {
     let base_path = base_url.split('?').next().unwrap_or(&base_url);
 
     let url = format!(
-        "{}?mode=maximized&session_id={}&target_tab_id={}&source_tab_id={}",
-        base_path, session_id, target_tab_id, source_tab_id
+        "{}?mode=maximized&session_id={}&target_tab_id={}&source_tab_id={}{}",
+        base_path, session_id, target_tab_id, source_tab_id, extra_query
     );
 
     tracing::info!("Opening maximized view: {}", url);

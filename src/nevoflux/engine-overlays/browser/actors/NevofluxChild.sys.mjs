@@ -484,6 +484,7 @@ export class NevofluxChild extends JSWindowActorChild {
       removeSessionStorage: () => this.removeSessionStorage(safeParams),
       clearSessionStorage: () => this.clearSessionStorage(safeParams),
       eval: () => this.evalScript(safeParams),
+      evalInIframe: () => this.evalInIframe(safeParams),
       addScript: () => this.addScript(safeParams),
       removeScript: () => this.removeScript(safeParams),
       listFrames: () => this.listFrames(safeParams),
@@ -4898,6 +4899,82 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   // ========== JavaScript Execution ==========
+
+  // Run a JS snippet INSIDE the canvas page's artifact <iframe> (where the app's
+  // DOM and NevofluxSDK live) and return the last expression's value. The iframe
+  // is out-of-process, so we cannot reach it synchronously — we postMessage a
+  // `__nevofluxEval` request (handled by the injected SDK) and await the reply
+  // on the canvas top window. Backs the `canvas_eval` tool (spec §6).
+  async evalInIframe({ script, timeoutMs }) {
+    // Coerce null/invalid to the default. A JS default param only applies to
+    // `undefined`, but the daemon serializes an absent timeout_ms to JSON
+    // `null` — `setTimeout(fn, null)` would fire IMMEDIATELY (0ms), making
+    // every canvas_eval return CANVAS_EVAL_TIMEOUT instantly.
+    const timeout = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 5000;
+    const win = this.contentWindow;
+    if (!win) {
+      return {
+        success: false,
+        error: { code: 5003, message: 'No content window', recoverable: false },
+      };
+    }
+    const iframe = win.document && win.document.querySelector('iframe');
+    if (!iframe || !iframe.contentWindow) {
+      return {
+        success: false,
+        error: { code: 5004, message: 'CANVAS_NOT_READY', recoverable: true },
+      };
+    }
+    const evalId = 'ceval-' + Math.random().toString(36).slice(2) + Date.now();
+    return await new Promise((resolve) => {
+      let done = false;
+      const finish = (value) => {
+        if (done) {
+          return;
+        }
+        done = true;
+        try {
+          win.removeEventListener('message', onMsg);
+        } catch (_) {}
+        try {
+          win.clearTimeout(timer);
+        } catch (_) {}
+        resolve(value);
+      };
+      const onMsg = (e) => {
+        const d = e.data || {};
+        if (d.__nevofluxEval !== 'response' || d.evalId !== evalId) {
+          return;
+        }
+        if (d.ok) {
+          finish({ success: true, result: d.result });
+        } else {
+          finish({
+            success: false,
+            error: { code: 5005, message: d.error || 'eval error', recoverable: true },
+          });
+        }
+      };
+      const timer = win.setTimeout(() => {
+        finish({
+          success: false,
+          error: { code: 5006, message: 'CANVAS_EVAL_TIMEOUT', recoverable: true },
+        });
+      }, timeout);
+      win.addEventListener('message', onMsg);
+      try {
+        iframe.contentWindow.postMessage(
+          { _nevoflux: true, __nevofluxEval: 'request', evalId, script },
+          '*'
+        );
+      } catch (e) {
+        finish({
+          success: false,
+          error: { code: 5007, message: String(e.message || e), recoverable: true },
+        });
+      }
+    });
+  }
 
   // Note: Timeout is not implemented for eval. Implementing true timeout for synchronous
   // eval is complex and would require running in a Worker or using async patterns.

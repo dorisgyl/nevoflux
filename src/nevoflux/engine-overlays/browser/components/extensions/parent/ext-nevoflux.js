@@ -208,7 +208,13 @@ this.nevoflux = class extends ExtensionAPI {
 
         async snapshot(tabId, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, 'snapshot', options);
+          // autoRestore:false — a snapshot is a passive read; it must NOT wake +
+          // activate a discarded background tab (that steals focus from the
+          // Canvas tab, forcing the user to click back). If the target is
+          // discarded, snapshot is skipped instead of stealing focus.
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'snapshot', options, {
+            autoRestore: false,
+          });
         },
 
         async screenshot(tabId, options = {}) {
@@ -1474,6 +1480,28 @@ this.nevoflux = class extends ExtensionAPI {
           });
         },
 
+        // Run a JS snippet inside the canvas tab's artifact iframe and return
+        // the value. Unlike `eval` (synchronous evalInSandbox on the top page),
+        // this awaits an async postMessage round-trip into the OOP iframe. Backs
+        // the canvas_eval tool (spec §6).
+        async canvasEval(tabId, script, options = {}) {
+          if (!script || typeof script !== 'string') {
+            return {
+              success: false,
+              error: {
+                code: 9002,
+                message: 'Missing or invalid required parameter: script',
+                recoverable: false,
+              },
+            };
+          }
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'evalInIframe', {
+            script,
+            timeoutMs: options.timeoutMs,
+          });
+        },
+
         async addScript(tabId, script, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
           return self.executeInTabWithRestore(resolvedTabId, extension, 'addScript', {
@@ -2711,6 +2739,20 @@ this.nevoflux = class extends ExtensionAPI {
     }
 
     const nativeTab = tab.nativeTab;
+
+    // Passive callers (e.g. snapshot) pass autoRestore:false: never wake +
+    // activate a discarded tab just to read it — that would steal focus from
+    // whatever tab (e.g. a Canvas tab) the user is on. Skip cleanly instead.
+    if (!autoRestore && this.isTabDiscarded(nativeTab)) {
+      return {
+        success: false,
+        error: {
+          code: 5008,
+          message: 'Tab is discarded; skipped to preserve focus',
+          recoverable: true,
+        },
+      };
+    }
 
     // Auto-restore discarded tabs if needed
     if (autoRestore && this.isTabDiscarded(nativeTab)) {

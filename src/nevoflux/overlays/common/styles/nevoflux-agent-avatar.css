@@ -23,6 +23,9 @@
 .nevoflux-agent-avatar__badge {
   position: absolute; right: -2px; top: -2px;
   width: 12px; height: 12px; border-radius: 50%;
+  /* Hidden by default; a [data-state="needs-you"] or [data-jobs="..."] rule
+     below turns it back on with display: block. */
+  display: none;
 }
 /* working: breathing ring */
 .nevoflux-agent-avatar[data-state="working"] {
@@ -35,6 +38,7 @@
 /* needs-you: red badge + gentle shake */
 .nevoflux-agent-avatar[data-state="needs-you"] .nevoflux-agent-avatar__badge {
   background: #e5484d;
+  display: block;
 }
 .nevoflux-agent-avatar[data-state="needs-you"] {
   animation: nevoflux-avatar-shake 0.5s ease-in-out infinite;
@@ -44,8 +48,42 @@
 }
 /* offline: dimmed, no state animation */
 .nevoflux-agent-avatar[data-state="offline"] { opacity: 0.4; filter: grayscale(1); }
+
+/* Task 5.2: background-jobs badge, driven by [data-jobs] set from the
+   'jobs:' part of the status string (see setState()).
+   Composition rule: needs-you is a blocking "the agent needs a human"
+   state and must always win visually over a mere background-job dot, so
+   every jobs rule below is scoped with the :not([data-state="needs-you"])
+   guard on the *same* compound selector as the needs-you rule above
+   (equal specificity: one attribute selector on .nevoflux-agent-avatar +
+   one on .__badge). Order-independent: even if these rules were declared
+   before the needs-you rule, or the needs-you rule's own specificity
+   changed, the :not() guard still prevents a jobs rule from ever matching
+   while data-state="needs-you" — the two states are structurally
+   mutually exclusive here rather than relying on source-order cascade. */
+.nevoflux-agent-avatar[data-jobs="healthy"]:not([data-state="needs-you"]) .nevoflux-agent-avatar__badge {
+  display: block;
+  background: var(--zen-primary-color);
+}
+.nevoflux-agent-avatar[data-jobs="running"]:not([data-state="needs-you"]) .nevoflux-agent-avatar__badge {
+  display: block;
+  background: var(--zen-primary-color);
+  animation: nevoflux-avatar-badge-pulse 1.2s ease-in-out infinite;
+}
+.nevoflux-agent-avatar[data-jobs="failed"]:not([data-state="needs-you"]) .nevoflux-agent-avatar__badge {
+  display: block;
+  background: #e5484d;
+}
+@keyframes nevoflux-avatar-badge-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.35); opacity: 0.7; }
+}
 @media (prefers-reduced-motion: reduce) {
   .nevoflux-agent-avatar { animation: none !important; }
+  /* The parent's animation:none above does not cascade to this child's own
+     animation property (animation is not inherited), so the badge pulse
+     needs its own guard. */
+  .nevoflux-agent-avatar[data-jobs="running"] .nevoflux-agent-avatar__badge { animation: none !important; }
 }
 
 /* ---- Avatar context menu ---- */

@@ -3592,6 +3592,567 @@ body {
 }
 
 /* ============================================
+   Jobs Panel (Full Overlay) — /schedule
+   ============================================ */
+.jobs-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  background: var(--nevo-background);
+  display: flex;
+  flex-direction: column;
+  animation: historySlideIn var(--nevo-transition-normal);
+}
+
+.jobs-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--nevo-space-md) var(--nevo-space-lg);
+  background: var(--nevo-background);
+  border-bottom: 1px solid var(--nevo-border);
+  min-height: 52px;
+  flex-shrink: 0;
+}
+
+.jobs-back-btn,
+.jobs-refresh-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--nevo-radius-md);
+  color: var(--nevo-text-secondary);
+  cursor: pointer;
+  transition: all var(--nevo-transition-fast);
+}
+
+.jobs-back-btn:hover,
+.jobs-refresh-btn:hover {
+  background: var(--nevo-surface);
+  color: var(--nevo-text);
+}
+
+.jobs-refresh-btn.spinning svg {
+  animation: jobsSpin 0.8s linear infinite;
+}
+
+@keyframes jobsSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.jobs-panel-title {
+  font-size: var(--nevo-font-size-base);
+  font-weight: 500;
+  color: var(--nevo-text);
+}
+
+.jobs-panel-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--nevo-space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--nevo-space-md);
+}
+
+.jobs-panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: var(--nevo-space-xs);
+  text-align: center;
+  color: var(--nevo-text-muted);
+  font-size: var(--nevo-font-size-sm);
+}
+
+.jobs-empty-hint {
+  font-size: var(--nevo-font-size-xs);
+  color: var(--nevo-text-muted);
+}
+
+/* --- Job card --- */
+.job-card {
+  border: 1px solid var(--nevo-border);
+  border-radius: var(--nevo-radius-md);
+  padding: var(--nevo-space-md);
+  background: var(--nevo-surface);
+  display: flex;
+  flex-direction: column;
+  gap: var(--nevo-space-sm);
+}
+
+.job-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nevo-space-sm);
+}
+
+.job-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--nevo-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.job-status-chip {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 2px 6px;
+  border-radius: var(--nevo-radius-sm);
+  color: var(--nevo-text-secondary);
+  background: var(--nevo-surface-hover);
+}
+
+.job-status-chip.status-active {
+  color: var(--nevo-primary);
+  background: var(--nevo-primary-light);
+}
+
+.job-status-chip.status-paused {
+  color: var(--nevo-warning);
+  background: color-mix(in srgb, var(--nevo-warning) 12%, transparent);
+}
+
+/* Loop-state chip variants (Loop Jobs panel). */
+.job-status-chip.status-running {
+  color: var(--nevo-primary);
+  background: var(--nevo-primary-light);
+}
+
+.job-status-chip.status-pending,
+.job-status-chip.status-idle {
+  color: var(--nevo-text-secondary);
+  background: var(--nevo-surface-hover);
+}
+
+.job-status-chip.status-failed {
+  color: var(--nevo-error, #dc2626);
+  background: color-mix(in srgb, var(--nevo-error, #dc2626) 12%, transparent);
+}
+
+.job-card-cadence {
+  font-size: var(--nevo-font-size-sm);
+  color: var(--nevo-text-secondary);
+  font-family: var(--nevo-font-mono);
+  word-break: break-word;
+}
+
+.job-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--nevo-space-xs);
+}
+
+.job-run-badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: var(--nevo-radius-sm);
+  color: var(--nevo-text-secondary);
+  background: var(--nevo-surface-hover);
+}
+
+.job-run-badge.badge-running {
+  color: var(--nevo-primary);
+  background: var(--nevo-primary-light);
+}
+.job-run-badge.badge-ok {
+  color: var(--nevo-success);
+  background: color-mix(in srgb, var(--nevo-success) 12%, transparent);
+}
+.job-run-badge.badge-error {
+  color: var(--nevo-error);
+  background: color-mix(in srgb, var(--nevo-error) 12%, transparent);
+}
+.job-run-badge.badge-missed {
+  color: var(--nevo-warning);
+  background: color-mix(in srgb, var(--nevo-warning) 12%, transparent);
+}
+
+.job-run-count,
+.job-browser-chip {
+  font-size: 11px;
+  color: var(--nevo-text-muted);
+}
+
+.job-browser-chip {
+  padding: 2px 6px;
+  border-radius: var(--nevo-radius-sm);
+  border: 1px solid var(--nevo-border);
+}
+
+.job-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--nevo-space-xs);
+}
+
+.job-action-btn {
+  font-size: var(--nevo-font-size-sm);
+  font-family: var(--nevo-font-family);
+  padding: 4px 10px;
+  border: 1px solid var(--nevo-border);
+  border-radius: var(--nevo-radius-sm);
+  background: var(--nevo-background);
+  color: var(--nevo-text-secondary);
+  cursor: pointer;
+  transition:
+    background var(--nevo-transition-fast),
+    border-color var(--nevo-transition-fast),
+    color var(--nevo-transition-fast);
+}
+
+.job-action-btn:hover {
+  background: var(--nevo-surface-hover);
+  color: var(--nevo-text);
+}
+
+.job-action-danger-ghost:hover {
+  border-color: var(--nevo-error);
+  color: var(--nevo-error);
+  background: color-mix(in srgb, var(--nevo-error) 8%, transparent);
+}
+
+.job-action-danger {
+  border-color: var(--nevo-error);
+  color: #fff;
+  background: var(--nevo-error);
+}
+.job-action-danger:hover {
+  background: var(--nevo-error);
+  color: #fff;
+  filter: brightness(0.95);
+}
+
+.job-history-toggle {
+  align-self: flex-start;
+  font-size: var(--nevo-font-size-sm);
+  font-family: var(--nevo-font-family);
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--nevo-primary);
+  cursor: pointer;
+}
+.job-history-toggle:hover {
+  text-decoration: underline;
+}
+
+.job-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nevo-space-xs);
+  border-top: 1px solid var(--nevo-border);
+  padding-top: var(--nevo-space-sm);
+}
+
+.job-history-loading,
+.job-history-empty {
+  display: flex;
+  align-items: center;
+  gap: var(--nevo-space-sm);
+  font-size: var(--nevo-font-size-sm);
+  color: var(--nevo-text-muted);
+}
+
+.job-run-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--nevo-space-xs) var(--nevo-space-sm);
+  border-radius: var(--nevo-radius-sm);
+  background: var(--nevo-background);
+}
+
+.job-run-row-top {
+  display: flex;
+  align-items: center;
+  gap: var(--nevo-space-sm);
+  font-size: 11px;
+}
+
+.job-run-time {
+  color: var(--nevo-text-secondary);
+}
+
+.job-run-status {
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: var(--nevo-text-muted);
+}
+.job-run-status.status-ok {
+  color: var(--nevo-success);
+}
+.job-run-status.status-error {
+  color: var(--nevo-error);
+}
+.job-run-status.status-missed {
+  color: var(--nevo-warning);
+}
+.job-run-status.status-running {
+  color: var(--nevo-primary);
+}
+
+.job-run-tokens {
+  margin-left: auto;
+  color: var(--nevo-text-muted);
+}
+
+.job-run-error {
+  font-size: 11px;
+  color: var(--nevo-error);
+  word-break: break-word;
+}
+
+/* --- Completed section (terminal `ran` jobs) --- */
+.jobs-completed-section {
+  margin-top: var(--nevo-space-sm);
+  border-top: 1px solid var(--nevo-border);
+  padding-top: var(--nevo-space-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--nevo-space-sm);
+}
+
+.jobs-completed-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--nevo-space-xs);
+  width: 100%;
+  padding: var(--nevo-space-xs) var(--nevo-space-sm);
+  background: transparent;
+  border: none;
+  border-radius: var(--nevo-radius-sm);
+  color: var(--nevo-text-secondary);
+  font-size: var(--nevo-font-size-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  transition: color var(--nevo-transition-fast);
+}
+
+.jobs-completed-toggle:hover {
+  color: var(--nevo-text);
+}
+
+.jobs-completed-caret {
+  display: inline-block;
+  transition: transform var(--nevo-transition-fast);
+}
+
+.jobs-completed-caret.open {
+  transform: rotate(90deg);
+}
+
+/* --- Run output text (completed card + run-history row) --- */
+.job-final-text,
+.job-run-final-text {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--nevo-text-secondary);
+  background: var(--nevo-surface-hover);
+  border-radius: var(--nevo-radius-sm);
+  padding: var(--nevo-space-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.job-run-final-text {
+  margin-top: var(--nevo-space-xs);
+  font-size: 11px;
+  max-height: 120px;
+}
+
+/* --- Loop iteration cards revealed by a loop card's "View details" --- */
+.loop-iter-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nevo-space-xs);
+  margin-top: var(--nevo-space-sm);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+/* --- Header calendar button dot --- */
+.jobs-btn {
+  position: relative;
+}
+
+.jobs-btn.has-jobs {
+  color: var(--nevo-text);
+}
+
+.jobs-btn-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--nevo-radius-full);
+  background: var(--nevo-primary);
+  pointer-events: none;
+}
+.jobs-btn-dot.failed {
+  background: var(--nevo-error);
+}
+
+/* --- Sidebar row + Left menu rail (maximized form) --- */
+.sidebar-row {
+  display: flex;
+  flex-direction: row;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+}
+
+.sidebar-main-col {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+
+.left-menu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nevo-space-xs);
+  width: 220px;
+  min-width: 220px;
+  flex-shrink: 0;
+  padding: var(--nevo-space-sm);
+  background: var(--nevo-surface);
+  border-right: 1px solid var(--nevo-border);
+}
+
+/* Brand lockup: mark + wordmark */
+.left-menu-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--nevo-space-sm);
+  padding: var(--nevo-space-sm);
+  margin-bottom: var(--nevo-space-xs);
+  border-bottom: 1px solid var(--nevo-border);
+}
+
+.left-menu-logo {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: var(--nevo-radius-sm);
+  overflow: hidden;
+  line-height: 0;
+}
+
+.left-menu-logo svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.left-menu-wordmark {
+  font-size: var(--nevo-font-size-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--nevo-text);
+}
+
+/* Navigation list */
+.left-menu-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.left-menu-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--nevo-space-sm);
+  width: 100%;
+  height: 36px;
+  padding: 0 var(--nevo-space-sm);
+  background: transparent;
+  border: none;
+  border-radius: var(--nevo-radius-md);
+  color: var(--nevo-text-secondary);
+  cursor: pointer;
+  font-family: var(--nevo-font-family);
+  font-size: var(--nevo-font-size-base);
+  text-align: left;
+  transition: all var(--nevo-transition-fast);
+}
+
+.left-menu-item svg {
+  flex-shrink: 0;
+}
+
+.left-menu-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.left-menu-item:hover {
+  background: var(--nevo-surface-hover);
+  color: var(--nevo-text);
+}
+
+.left-menu-item.active {
+  background: var(--nevo-primary-light);
+  color: var(--nevo-primary);
+}
+
+/* Live-jobs indicator: trailing dot on the row */
+.left-menu-item.has-jobs::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: var(--nevo-space-sm);
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: var(--nevo-radius-full);
+  background: var(--nevo-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jobs-panel {
+    animation: none;
+  }
+  .jobs-refresh-btn.spinning svg {
+    animation: none;
+  }
+}
+
+/* ============================================
    Activity Feed (Tool Calls)
    ============================================ */
 .activity-feed {
@@ -4036,6 +4597,29 @@ body {
 
   .tool-auth-btn--deny:hover {
     background: rgba(220, 38, 38, 0.1);
+  }
+
+  /* Jobs panel — lift the semi-transparent status backgrounds for dark bg. */
+  .job-run-badge.badge-ok {
+    background: color-mix(in srgb, var(--nevo-success) 20%, transparent);
+  }
+  .job-run-badge.badge-error {
+    background: color-mix(in srgb, var(--nevo-error) 20%, transparent);
+  }
+  .job-run-badge.badge-missed {
+    background: color-mix(in srgb, var(--nevo-warning) 20%, transparent);
+  }
+  .job-run-badge.badge-running {
+    background: color-mix(in srgb, var(--nevo-primary) 20%, transparent);
+  }
+  .job-status-chip.status-paused {
+    background: color-mix(in srgb, var(--nevo-warning) 20%, transparent);
+  }
+  .job-action-danger-ghost:hover {
+    background: rgba(220, 38, 38, 0.14);
+  }
+  .job-card {
+    background: color-mix(in srgb, var(--nevo-surface) 70%, transparent);
   }
 }
 
