@@ -135,6 +135,9 @@ fn SidebarContent() -> Element {
 
             // Jobs panel overlay (scheduled background jobs)
             JobsPanel {}
+
+            // Loop Jobs panel overlay (running loops; maximized mode only)
+            LoopsPanel {}
         }
 
         // Input area with context bar

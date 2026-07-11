@@ -14,6 +14,14 @@ use dioxus::prelude::*;
 #[component]
 pub fn StickyLoopCards() -> Element {
     let ctx = use_app_context();
+
+    // In the maximized (tab) form the Loop Jobs left-nav panel is the loop
+    // control surface, so the sticky in-chat cards are hidden there. In the
+    // narrow sidebar form (no left menu) they remain the only control.
+    if ctx.maximize.read().is_maximized {
+        return rsx! {};
+    }
+
     let loops = ctx.loops.read();
     let session = ctx.session.read();
     let active_session_id = session.id.clone();

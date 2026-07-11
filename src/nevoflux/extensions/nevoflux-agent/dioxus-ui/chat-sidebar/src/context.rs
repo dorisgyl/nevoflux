@@ -106,6 +106,9 @@ pub struct AppContext {
     pub schedule_jobs: Signal<std::collections::HashMap<String, crate::state::ScheduleJobState>>,
     /// Whether to show the Jobs panel overlay.
     pub show_jobs_panel: Signal<bool>,
+    /// Whether to show the Loop Jobs panel overlay (maximized mode only).
+    /// Mutually exclusive with `show_jobs_panel`.
+    pub show_loops_panel: Signal<bool>,
     /// Latest `system:schedule:snapshot` aggregate
     /// (`{active, running, failed_recent, next_fire_at}`). Drives the header
     /// calendar-badge state even before the per-schedule map is fully primed.
@@ -153,6 +156,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
     // Open the Jobs panel immediately when the maximize-jump deep-linked it
     // (`?panel=jobs`).
     let show_jobs_panel = use_signal(|| parse_maximize_params().panel.as_deref() == Some("jobs"));
+    let show_loops_panel = use_signal(|| parse_maximize_params().panel.as_deref() == Some("loops"));
     let schedule_snapshot = use_signal(|| None::<serde_json::Value>);
     let mut first_run = use_signal(|| false);
     let mut has_configured_provider = use_signal(|| false);
@@ -190,6 +194,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
         loops,
         schedule_jobs,
         show_jobs_panel,
+        show_loops_panel,
         schedule_snapshot,
         first_run,
         has_configured_provider,

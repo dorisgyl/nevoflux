@@ -3731,6 +3731,23 @@ body {
   background: color-mix(in srgb, var(--nevo-warning) 12%, transparent);
 }
 
+/* Loop-state chip variants (Loop Jobs panel). */
+.job-status-chip.status-running {
+  color: var(--nevo-primary);
+  background: var(--nevo-primary-light);
+}
+
+.job-status-chip.status-pending,
+.job-status-chip.status-idle {
+  color: var(--nevo-text-secondary);
+  background: var(--nevo-surface-hover);
+}
+
+.job-status-chip.status-failed {
+  color: var(--nevo-error, #dc2626);
+  background: color-mix(in srgb, var(--nevo-error, #dc2626) 12%, transparent);
+}
+
 .job-card-cadence {
   font-size: var(--nevo-font-size-sm);
   color: var(--nevo-text-secondary);
@@ -3952,29 +3969,83 @@ body {
 .left-menu {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: var(--nevo-space-sm);
-  width: 48px;
-  min-width: 48px;
+  gap: var(--nevo-space-xs);
+  width: 220px;
+  min-width: 220px;
   flex-shrink: 0;
-  padding: var(--nevo-space-sm) 0;
+  padding: var(--nevo-space-sm);
   background: var(--nevo-surface);
   border-right: 1px solid var(--nevo-border);
 }
 
-.left-menu-item {
-  position: relative;
-  width: 36px;
-  height: 36px;
+/* Brand lockup: mark + wordmark */
+.left-menu-brand {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: var(--nevo-space-sm);
+  padding: var(--nevo-space-sm);
+  margin-bottom: var(--nevo-space-xs);
+  border-bottom: 1px solid var(--nevo-border);
+}
+
+.left-menu-logo {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: var(--nevo-radius-sm);
+  overflow: hidden;
+  line-height: 0;
+}
+
+.left-menu-logo svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.left-menu-wordmark {
+  font-size: var(--nevo-font-size-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--nevo-text);
+}
+
+/* Navigation list */
+.left-menu-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.left-menu-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--nevo-space-sm);
+  width: 100%;
+  height: 36px;
+  padding: 0 var(--nevo-space-sm);
   background: transparent;
   border: none;
   border-radius: var(--nevo-radius-md);
   color: var(--nevo-text-secondary);
   cursor: pointer;
+  font-family: var(--nevo-font-family);
+  font-size: var(--nevo-font-size-base);
+  text-align: left;
   transition: all var(--nevo-transition-fast);
+}
+
+.left-menu-item svg {
+  flex-shrink: 0;
+}
+
+.left-menu-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .left-menu-item:hover {
@@ -3987,11 +4058,13 @@ body {
   color: var(--nevo-primary);
 }
 
+/* Live-jobs indicator: trailing dot on the row */
 .left-menu-item.has-jobs::after {
   content: "";
   position: absolute;
-  top: 5px;
-  right: 5px;
+  top: 50%;
+  right: var(--nevo-space-sm);
+  transform: translateY(-50%);
   width: 6px;
   height: 6px;
   border-radius: var(--nevo-radius-full);
