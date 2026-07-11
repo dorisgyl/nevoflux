@@ -2158,6 +2158,12 @@ fn apply_schedule_event(
             if let Some(ended_at) = payload.get("ended_at").and_then(|v| v.as_i64()) {
                 entry.last_run_at = Some(ended_at);
             }
+            // Capture the run's output text (4 KB-capped by the daemon) so the
+            // Completed section can show it inline without a history fetch.
+            entry.last_final_text = payload
+                .get("final_text")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
             // Optimistic bump; `schedule.list` reconciliation is authoritative.
             entry.run_count += 1;
         }

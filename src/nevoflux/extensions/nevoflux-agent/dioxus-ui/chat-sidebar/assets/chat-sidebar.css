@@ -3924,6 +3924,68 @@ body {
   word-break: break-word;
 }
 
+/* --- Completed section (terminal `ran` jobs) --- */
+.jobs-completed-section {
+  margin-top: var(--nevo-space-sm);
+  border-top: 1px solid var(--nevo-border);
+  padding-top: var(--nevo-space-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--nevo-space-sm);
+}
+
+.jobs-completed-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--nevo-space-xs);
+  width: 100%;
+  padding: var(--nevo-space-xs) var(--nevo-space-sm);
+  background: transparent;
+  border: none;
+  border-radius: var(--nevo-radius-sm);
+  color: var(--nevo-text-secondary);
+  font-size: var(--nevo-font-size-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  transition: color var(--nevo-transition-fast);
+}
+
+.jobs-completed-toggle:hover {
+  color: var(--nevo-text);
+}
+
+.jobs-completed-caret {
+  display: inline-block;
+  transition: transform var(--nevo-transition-fast);
+}
+
+.jobs-completed-caret.open {
+  transform: rotate(90deg);
+}
+
+/* --- Run output text (completed card + run-history row) --- */
+.job-final-text,
+.job-run-final-text {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--nevo-text-secondary);
+  background: var(--nevo-surface-hover);
+  border-radius: var(--nevo-radius-sm);
+  padding: var(--nevo-space-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.job-run-final-text {
+  margin-top: var(--nevo-space-xs);
+  font-size: 11px;
+  max-height: 120px;
+}
+
 /* --- Header calendar button dot --- */
 .jobs-btn {
   position: relative;

@@ -55,4 +55,10 @@ pub struct ScheduleJobState {
     /// Not part of the `schedule.list` payload — preserved across reconciliation.
     #[serde(default, skip_deserializing)]
     pub running: bool,
+    /// Output text of the most recent run, from the `run_end` event
+    /// (`system:schedule:run_end` now carries a 4 KB-capped `final_text`).
+    /// Not part of the `schedule.list` payload — preserved across
+    /// reconciliation so the Completed section can show it inline.
+    #[serde(default, skip_deserializing)]
+    pub last_final_text: Option<String>,
 }

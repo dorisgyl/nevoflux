@@ -21,23 +21,38 @@ use crate::utils::format_unix_datetime;
 /// preserving in-flight `running` flags (which the list payload never carries).
 fn reconcile_schedule_jobs(mut ctx: AppContext, incoming: Vec<ScheduleJobState>) {
     let mut map = ctx.schedule_jobs.write();
+    // Snapshot the event-only fields that `schedule.list` never carries, so a
+    // reconcile doesn't wipe them: the in-flight `running` flag and the last
+    // run's `final_text` (from the `run_end` event).
     let running_ids: std::collections::HashSet<String> = map
         .values()
         .filter(|j| j.running)
         .map(|j| j.schedule_id.clone())
         .collect();
+    let final_texts: std::collections::HashMap<String, String> = map
+        .values()
+        .filter_map(|j| {
+            j.last_final_text
+                .clone()
+                .map(|t| (j.schedule_id.clone(), t))
+        })
+        .collect();
     map.clear();
     for mut job in incoming {
-        // `schedule.list` returns ALL statuses, including terminal ones
-        // (`cancelled`/`ran`). Terminal schedules must never re-enter the live
-        // map: the panel filters them out, and — crucially — a cancelled row
-        // whose `last_run_status` is still `error` would otherwise re-poison
-        // the header/left-menu failed badge forever. Skip them here.
-        if job.status == "cancelled" || job.status == "ran" {
+        // `schedule.list` returns ALL statuses. `cancelled` rows are dropped
+        // entirely: they must never re-enter the map — a cancelled row whose
+        // `last_run_status` is still `error` would re-poison the header/
+        // left-menu failed badge forever. Terminal `ran` rows ARE kept now so
+        // the panel's Completed section can render them; the badge derivations
+        // (header, left-menu) independently exclude `ran`.
+        if job.status == "cancelled" {
             continue;
         }
         if running_ids.contains(&job.schedule_id) {
             job.running = true;
+        }
+        if let Some(t) = final_texts.get(&job.schedule_id) {
+            job.last_final_text = Some(t.clone());
         }
         map.insert(job.schedule_id.clone(), job);
     }
@@ -97,20 +112,37 @@ pub fn JobsPanel() -> Element {
         return rsx! {};
     }
 
-    let mut jobs: Vec<ScheduleJobState> = ctx
+    // Active jobs: everything non-terminal (excludes `cancelled` and `ran`).
+    let mut active: Vec<ScheduleJobState> = ctx
         .schedule_jobs
         .read()
         .values()
-        .filter(|j| j.status != "cancelled")
+        .filter(|j| j.status != "cancelled" && j.status != "ran")
         .cloned()
         .collect();
     // Soonest fire first, then name for stability.
-    jobs.sort_by(|a, b| {
+    active.sort_by(|a, b| {
         a.next_fire_at
             .unwrap_or(i64::MAX)
             .cmp(&b.next_fire_at.unwrap_or(i64::MAX))
             .then_with(|| a.name.cmp(&b.name))
     });
+
+    // Completed jobs: terminal `ran` rows, most-recent first, capped at 20.
+    let mut completed: Vec<ScheduleJobState> = ctx
+        .schedule_jobs
+        .read()
+        .values()
+        .filter(|j| j.status == "ran")
+        .cloned()
+        .collect();
+    completed.sort_by(|a, b| {
+        b.last_run_at
+            .unwrap_or(i64::MIN)
+            .cmp(&a.last_run_at.unwrap_or(i64::MIN))
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    completed.truncate(20);
 
     rsx! {
         div {
@@ -122,7 +154,7 @@ pub fn JobsPanel() -> Element {
             JobsPanelHeader {}
 
             div { class: "jobs-panel-list",
-                if jobs.is_empty() {
+                if active.is_empty() && completed.is_empty() {
                     div { class: "jobs-panel-empty",
                         svg {
                             width: "48",
@@ -142,9 +174,46 @@ pub fn JobsPanel() -> Element {
                         p { class: "jobs-empty-hint", "Ask the agent to schedule one." }
                     }
                 } else {
-                    for job in jobs.iter() {
+                    for job in active.iter() {
                         JobCard { key: "{job.schedule_id}", job: job.clone() }
                     }
+                    if !completed.is_empty() {
+                        CompletedSection { jobs: completed.clone() }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Collapsible "Completed" section holding terminal (`ran`) jobs.
+#[component]
+fn CompletedSection(jobs: Vec<ScheduleJobState>) -> Element {
+    let mut expanded = use_signal(|| false);
+    let is_expanded = *expanded.read();
+    let count = jobs.len();
+    let caret_class = if is_expanded {
+        "jobs-completed-caret open"
+    } else {
+        "jobs-completed-caret"
+    };
+    let toggle = move |_| {
+        let cur = *expanded.read();
+        expanded.set(!cur);
+    };
+
+    rsx! {
+        div { class: "jobs-completed-section",
+            button {
+                class: "jobs-completed-toggle",
+                onclick: toggle,
+                aria_expanded: "{is_expanded}",
+                span { class: "{caret_class}", "▸" }
+                span { "Completed ({count})" }
+            }
+            if is_expanded {
+                for job in jobs.iter() {
+                    JobCard { key: "{job.schedule_id}", job: job.clone() }
                 }
             }
         }
@@ -241,7 +310,12 @@ fn JobCard(job: ScheduleJobState) -> Element {
     let status = job.status.clone();
     let is_active = status == "active";
     let is_paused = status == "paused";
+    let is_ran = status == "ran";
     let run_suffix = if job.run_count == 1 { "" } else { "s" };
+    let final_text = job
+        .last_final_text
+        .clone()
+        .filter(|s| !s.trim().is_empty());
 
     // Read local UI signals unconditionally (keeps the card reactive).
     let is_expanded = *expanded.read();
@@ -325,7 +399,7 @@ fn JobCard(job: ScheduleJobState) -> Element {
                 runs_loading.set(true);
                 let id = id.clone();
                 spawn_local(async move {
-                    match crate::messaging::schedule_runs(&id, 20).await {
+                    match crate::messaging::schedule_runs(&id, 20, true).await {
                         Ok(r) => runs.set(r),
                         Err(e) => tracing::warn!("schedule.runs failed: {}", e),
                     }
@@ -354,30 +428,39 @@ fn JobCard(job: ScheduleJobState) -> Element {
                 }
             }
 
-            div { class: "job-card-actions",
-                if is_active {
-                    button { class: "job-action-btn", onclick: pause, "Pause" }
-                } else if is_paused {
-                    button { class: "job-action-btn", onclick: resume, "Resume" }
+            if is_ran {
+                if let Some(text) = final_text {
+                    div { class: "job-final-text", "{text}" }
                 }
-                button { class: "job-action-btn", onclick: run_now, "Run now" }
+            }
 
-                if is_confirming {
-                    button {
-                        class: "job-action-btn job-action-danger",
-                        onclick: cancel_confirmed,
-                        "Confirm cancel"
+            // Terminal (`ran`) one-off jobs are done — no pause/run/cancel.
+            if !is_ran {
+                div { class: "job-card-actions",
+                    if is_active {
+                        button { class: "job-action-btn", onclick: pause, "Pause" }
+                    } else if is_paused {
+                        button { class: "job-action-btn", onclick: resume, "Resume" }
                     }
-                    button {
-                        class: "job-action-btn",
-                        onclick: cancel_dismiss,
-                        "Keep"
-                    }
-                } else {
-                    button {
-                        class: "job-action-btn job-action-danger-ghost",
-                        onclick: cancel_start,
-                        "Cancel"
+                    button { class: "job-action-btn", onclick: run_now, "Run now" }
+
+                    if is_confirming {
+                        button {
+                            class: "job-action-btn job-action-danger",
+                            onclick: cancel_confirmed,
+                            "Confirm cancel"
+                        }
+                        button {
+                            class: "job-action-btn",
+                            onclick: cancel_dismiss,
+                            "Keep"
+                        }
+                    } else {
+                        button {
+                            class: "job-action-btn job-action-danger-ghost",
+                            onclick: cancel_start,
+                            "Cancel"
+                        }
                     }
                 }
             }
@@ -442,6 +525,13 @@ fn JobRunRow(run: serde_json::Value) -> Element {
         .and_then(|v| v.as_str())
         .map(String::from)
         .filter(|s| !s.is_empty());
+    // `final_text` is present only when the panel fetched with
+    // `include_final_text: true` (see the history toggle).
+    let final_text = run
+        .get("final_text")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .filter(|s| !s.trim().is_empty());
 
     rsx! {
         div { class: "job-run-row",
@@ -454,6 +544,9 @@ fn JobRunRow(run: serde_json::Value) -> Element {
             }
             if let Some(err) = error {
                 div { class: "job-run-error", "{err}" }
+            }
+            if let Some(text) = final_text {
+                div { class: "job-run-final-text", "{text}" }
             }
         }
     }

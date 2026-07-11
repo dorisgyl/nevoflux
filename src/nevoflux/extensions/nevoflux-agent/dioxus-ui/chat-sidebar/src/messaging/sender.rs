@@ -1330,10 +1330,18 @@ pub async fn schedule_list() -> Result<Vec<ScheduleJobState>, String> {
 /// `schedule.runs` — recent run history for one schedule.
 /// Returns the raw run objects (`run_id, started_at, ended_at, status,
 /// fire_kind, error, tokens_used, goal_turns`) for lazy rendering.
-pub async fn schedule_runs(schedule_id: &str, limit: i64) -> Result<Vec<serde_json::Value>, String> {
+pub async fn schedule_runs(
+    schedule_id: &str,
+    limit: i64,
+    include_final_text: bool,
+) -> Result<Vec<serde_json::Value>, String> {
     let data = system_command(
         "schedule.runs",
-        serde_json::json!({ "schedule_id": schedule_id, "limit": limit }),
+        serde_json::json!({
+            "schedule_id": schedule_id,
+            "limit": limit,
+            "include_final_text": include_final_text,
+        }),
     )
     .await?;
     Ok(data
