@@ -202,6 +202,11 @@ fn LoopJobCard(state: LoopState) -> Element {
     let mut iter_rows: Vec<crate::state::IterationRow> = state.iterations.iter().cloned().collect();
     iter_rows.reverse();
     let has_iters = !iter_rows.is_empty();
+    let details_label = if has_iters {
+        format!("View details ({} iter{})", iter_rows.len(), if iter_rows.len() == 1 { "" } else { "s" })
+    } else {
+        "View details".to_string()
+    };
 
     let on_cancel = move |_| {
         let s = session_id.clone();
@@ -256,14 +261,14 @@ fn LoopJobCard(state: LoopState) -> Element {
                 }
             }
 
-            if has_iters {
-                button {
-                    class: "job-history-toggle",
-                    onclick: toggle_details,
-                    if is_showing { "Hide details" } else { "View details" }
-                }
-                if is_showing {
-                    div { class: "loop-iter-details",
+            button {
+                class: "job-history-toggle",
+                onclick: toggle_details,
+                {if is_showing { "Hide details".to_string() } else { details_label.clone() }}
+            }
+            if is_showing {
+                div { class: "loop-iter-details",
+                    if has_iters {
                         for row in iter_rows.iter() {
                             IterationCard {
                                 key: "{card_loop_id}-{row.sequence_number}",
@@ -271,6 +276,8 @@ fn LoopJobCard(state: LoopState) -> Element {
                                 row: row.clone(),
                             }
                         }
+                    } else {
+                        div { class: "job-history-empty", "No iterations yet." }
                     }
                 }
             }
