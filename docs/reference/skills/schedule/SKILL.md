@@ -32,7 +32,7 @@ Always confirm with the user: the schedule's **name** and a **human-readable cad
 - `goal_condition` — natural-language success condition (max 4000 chars); when set, each fire runs a goal loop that re-evaluates after every turn until met or budget/turns run out.
 - `goal_max_turns` — max turns for a goal-enabled run. Default 20.
 - `max_tokens_per_run` — token budget per run (plain and goal-enabled runs; goal turns + evaluator calls both count against it).
-- `evaluator_provider` / `evaluator_model` — direct-API provider/model used to evaluate `goal_condition` (ACP providers rejected). Default: the current provider/model.
+- `evaluator_provider` / `evaluator_model` — provider/model used to evaluate `goal_condition`. Default: the current provider/model. Most providers (any direct-API one, plus kimi-agent) judge in one zero-tool call; the streaming-only ACP providers (claude-code, gemini-cli, openclaw) judge in a degraded one-shot mode.
 
 ## Browser policy
 
@@ -94,7 +94,7 @@ schedule_create {
 }
 ```
 
-Each fire re-evaluates the condition after every turn (zero-tool evaluator, direct-API provider) and stops at met / turns / token budget — whichever comes first.
+Each fire re-evaluates the condition after every turn (zero-tool evaluator — direct-API, or ACP in degraded one-shot mode) and stops at met / turns / token budget — whichever comes first.
 
 ## Timing semantics — stated plainly
 
