@@ -4,21 +4,33 @@
 
 //! Loop Jobs panel component for the `/loop` skill.
 //!
-//! Full-panel overlay (mirrors `jobs_panel.rs`) listing the current session's
-//! live loops as cards: state, trigger, iteration/skip counts, prompt/skill,
-//! scratchpad preview, and cancel. In the maximized (tab) form this is the sole
-//! loop control surface — the sticky in-chat cards are hidden there
-//! (`sticky_loop_card.rs`). Loops are session-scoped and event-only, so there
-//! is no persisted history here (unlike the schedule Jobs panel).
+//! Full-panel overlay (mirrors `jobs_panel.rs`) for the current session's loops.
+//! Active loops (`pending`/`running`/`idle`) list on top; terminal loops
+//! (`cancelled`/`failed`) collect in a collapsible **Completed** section so a
+//! finished loop leaves a record instead of vanishing. Each card has a
+//! **View details** toggle that renders that loop's iteration cards inline in
+//! the panel (from `LoopState.iterations`).
+//!
+//! In the maximized (tab) form this is the sole loop surface — the sticky
+//! in-chat cards and the inline iteration cards are hidden there
+//! (`sticky_loop_card.rs`, `message_list.rs`). Loops are session-scoped and
+//! event-only, so completed records are in-memory and survive only until the
+//! sidebar reloads (no persisted history).
 
 use dioxus::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
+use crate::components::loop_ui::IterationCard;
 use crate::context::use_app_context;
 use crate::messaging::send_loop_cancel;
 use crate::state::LoopState;
 
-/// Full-panel view listing the current session's live loops.
+/// True when a loop has reached a terminal state and belongs in Completed.
+fn is_terminal(state: &str) -> bool {
+    state == "cancelled" || state == "failed"
+}
+
+/// Full-panel view listing the current session's loops.
 #[component]
 pub fn LoopsPanel() -> Element {
     let ctx = use_app_context();
@@ -28,19 +40,35 @@ pub fn LoopsPanel() -> Element {
     }
 
     let active_session_id = ctx.session.read().id.clone();
-    let mut loops: Vec<LoopState> = ctx
+
+    // Active loops: non-terminal, newest activity first.
+    let mut active: Vec<LoopState> = ctx
         .loops
         .read()
         .values()
-        .filter(|l| l.session_id == active_session_id && l.state != "cancelled")
+        .filter(|l| l.session_id == active_session_id && !is_terminal(&l.state))
         .cloned()
         .collect();
-    // Newest first by iteration count, then loop_id for stability.
-    loops.sort_by(|a, b| {
+    active.sort_by(|a, b| {
         b.iteration_count
             .cmp(&a.iteration_count)
             .then_with(|| a.loop_id.cmp(&b.loop_id))
     });
+
+    // Completed loops: terminal, most-recent first, capped at 20.
+    let mut completed: Vec<LoopState> = ctx
+        .loops
+        .read()
+        .values()
+        .filter(|l| l.session_id == active_session_id && is_terminal(&l.state))
+        .cloned()
+        .collect();
+    completed.sort_by(|a, b| {
+        b.iteration_count
+            .cmp(&a.iteration_count)
+            .then_with(|| a.loop_id.cmp(&b.loop_id))
+    });
+    completed.truncate(20);
 
     rsx! {
         div {
@@ -52,7 +80,7 @@ pub fn LoopsPanel() -> Element {
             LoopsPanelHeader {}
 
             div { class: "jobs-panel-list",
-                if loops.is_empty() {
+                if active.is_empty() && completed.is_empty() {
                     div { class: "jobs-panel-empty",
                         svg {
                             width: "48",
@@ -72,8 +100,11 @@ pub fn LoopsPanel() -> Element {
                         p { class: "jobs-empty-hint", "Start one with /loop." }
                     }
                 } else {
-                    for state in loops.iter() {
+                    for state in active.iter() {
                         LoopJobCard { key: "{state.loop_id}", state: state.clone() }
+                    }
+                    if !completed.is_empty() {
+                        LoopCompletedSection { loops: completed.clone() }
                     }
                 }
             }
@@ -115,13 +146,62 @@ fn LoopsPanelHeader() -> Element {
     }
 }
 
-/// One loop rendered as a card.
+/// Collapsible "Completed" section holding terminal (`cancelled`/`failed`) loops.
+#[component]
+fn LoopCompletedSection(loops: Vec<LoopState>) -> Element {
+    let mut expanded = use_signal(|| false);
+    let is_expanded = *expanded.read();
+    let count = loops.len();
+    let caret_class = if is_expanded {
+        "jobs-completed-caret open"
+    } else {
+        "jobs-completed-caret"
+    };
+    let toggle = move |_| {
+        let cur = *expanded.read();
+        expanded.set(!cur);
+    };
+
+    rsx! {
+        div { class: "jobs-completed-section",
+            button {
+                class: "jobs-completed-toggle",
+                onclick: toggle,
+                aria_expanded: "{is_expanded}",
+                span { class: "{caret_class}", "▸" }
+                span { "Completed ({count})" }
+            }
+            if is_expanded {
+                for state in loops.iter() {
+                    LoopJobCard { key: "{state.loop_id}", state: state.clone() }
+                }
+            }
+        }
+    }
+}
+
+/// One loop rendered as a card, with a View-details toggle that reveals its
+/// iteration cards.
 #[component]
 fn LoopJobCard(state: LoopState) -> Element {
     let session_id = state.session_id.clone();
     let loop_id = state.loop_id.clone();
+    let terminal = is_terminal(&state.state);
     let run_suffix = if state.iteration_count == 1 { "" } else { "s" };
     let scratch_visible = state.scratchpad_bytes > 0;
+
+    let mut show_details = use_signal(|| false);
+    let is_showing = *show_details.read();
+    let toggle_details = move |_| {
+        let cur = *show_details.read();
+        show_details.set(!cur);
+    };
+
+    // Iterations are stored most-recent first; reverse to oldest-first so they
+    // read top-to-bottom, matching the former in-chat order.
+    let mut iter_rows: Vec<crate::state::IterationRow> = state.iterations.iter().cloned().collect();
+    iter_rows.reverse();
+    let has_iters = !iter_rows.is_empty();
 
     let on_cancel = move |_| {
         let s = session_id.clone();
@@ -132,6 +212,8 @@ fn LoopJobCard(state: LoopState) -> Element {
             }
         });
     };
+
+    let card_loop_id = state.loop_id.clone();
 
     rsx! {
         div { class: "job-card",
@@ -163,11 +245,33 @@ fn LoopJobCard(state: LoopState) -> Element {
                 }
             }
 
-            div { class: "job-card-actions",
+            // Terminal loops are done — no cancel; active loops keep it.
+            if !terminal {
+                div { class: "job-card-actions",
+                    button {
+                        class: "job-action-btn job-action-danger-ghost",
+                        onclick: on_cancel,
+                        "Cancel"
+                    }
+                }
+            }
+
+            if has_iters {
                 button {
-                    class: "job-action-btn job-action-danger-ghost",
-                    onclick: on_cancel,
-                    "Cancel"
+                    class: "job-history-toggle",
+                    onclick: toggle_details,
+                    if is_showing { "Hide details" } else { "View details" }
+                }
+                if is_showing {
+                    div { class: "loop-iter-details",
+                        for row in iter_rows.iter() {
+                            IterationCard {
+                                key: "{card_loop_id}-{row.sequence_number}",
+                                loop_id: card_loop_id.clone(),
+                                row: row.clone(),
+                            }
+                        }
+                    }
                 }
             }
         }

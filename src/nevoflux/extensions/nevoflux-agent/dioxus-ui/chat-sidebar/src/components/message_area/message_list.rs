@@ -68,21 +68,29 @@ pub fn MessageList() -> Element {
     // render IterationCards inline with the message stream (spec §2.6).
     // Bound iteration cards to the current session_id; the deque caps at 20
     // per loop (see LoopState::push_or_update_iteration).
+    //
+    // Mode-aware: in the maximized (tab) form the Loop Jobs panel renders these
+    // behind each loop card's "View details", so we suppress the inline cards
+    // there. In the narrow sidebar (no panel) they stay inline as the only view.
     let active_session_id = ctx.session.read().id.clone();
-    let loop_iter_rows: Vec<(String, crate::state::IterationRow)> = ctx
-        .loops
-        .read()
-        .values()
-        .filter(|s| s.session_id == active_session_id)
-        .flat_map(|s| {
-            let lid = s.loop_id.clone();
-            // Iterations are stored most-recent first; reverse to oldest-first
-            // so they read top-to-bottom in the chat stream.
-            let mut rows: Vec<_> = s.iterations.iter().cloned().collect();
-            rows.reverse();
-            rows.into_iter().map(move |r| (lid.clone(), r))
-        })
-        .collect();
+    let is_maximized = ctx.maximize.read().is_maximized;
+    let loop_iter_rows: Vec<(String, crate::state::IterationRow)> = if is_maximized {
+        Vec::new()
+    } else {
+        ctx.loops
+            .read()
+            .values()
+            .filter(|s| s.session_id == active_session_id)
+            .flat_map(|s| {
+                let lid = s.loop_id.clone();
+                // Iterations are stored most-recent first; reverse to
+                // oldest-first so they read top-to-bottom in the chat stream.
+                let mut rows: Vec<_> = s.iterations.iter().cloned().collect();
+                rows.reverse();
+                rows.into_iter().map(move |r| (lid.clone(), r))
+            })
+            .collect()
+    };
 
     rsx! {
         div { class: "message-list",

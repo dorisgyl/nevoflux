@@ -3986,6 +3986,16 @@ body {
   max-height: 120px;
 }
 
+/* --- Loop iteration cards revealed by a loop card's "View details" --- */
+.loop-iter-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nevo-space-xs);
+  margin-top: var(--nevo-space-sm);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
 /* --- Header calendar button dot --- */
 .jobs-btn {
   position: relative;
