@@ -234,6 +234,76 @@ function ensureBackgroundScheduleSubscription() {
 }
 
 /**
+ * Ensure the background-owned `ui:notification:agent` subscription is tracked,
+ * so `notify_user` reminders fire an OS notification even when the sidebar is
+ * closed (the sidebar has its own `ui:notification:*` subscription for the
+ * in-app toast). Idempotent; registered alongside the schedule subscription.
+ */
+function ensureBackgroundNotifySubscription() {
+  if (eventBusSubscriptions.has('bg-notify')) return;
+  eventBusSubscriptions.set('bg-notify', {
+    source: 'background',
+    tabId: null,
+    bridgeId: null,
+    patterns: ['ui:notification:agent'],
+  });
+}
+
+// Bounded FIFO dedupe for background-consumed notification events (sticky
+// replay / reconnect can redeliver the same event_id).
+const notifySeenEventIds = [];
+const NOTIFY_EVENT_DEDUPE_CAP = 256;
+
+/**
+ * Handle a delivered `ui:notification:agent` event routed to the
+ * background-owned 'bg-notify' subscription. Fires an OS notification via
+ * `browser.notifications.create` only when the notification came from the
+ * `notify_user` tool AND no browser window is currently focused (mirroring the
+ * avatar's "OS notification only when unfocused" gate). The in-app toast is
+ * handled separately by the sidebar's own subscription.
+ */
+async function handleUserNotification(event) {
+  const eventId = event?.event_id;
+  if (eventId) {
+    if (notifySeenEventIds.includes(eventId)) return;
+    notifySeenEventIds.push(eventId);
+    if (notifySeenEventIds.length > NOTIFY_EVENT_DEDUPE_CAP) {
+      notifySeenEventIds.shift();
+    }
+  }
+
+  const data = event?.payload || {};
+  if (data.source !== 'notify_user') return;
+  // `body` is the canonical toast/notification text (matches the sidebar
+  // renderer); tolerate `message` as a fallback.
+  const raw = typeof data.body === 'string' ? data.body : data.message;
+  const message = typeof raw === 'string' ? raw.trim() : '';
+  if (!message) return;
+  const title = typeof data.title === 'string' && data.title.trim() ? data.title.trim() : 'NevoFlux';
+
+  // Only surface an OS notification when the browser is unfocused; when a
+  // window is focused the sidebar toast already reaches the user.
+  let focused = true;
+  try {
+    focused = (await browser.windows.getLastFocused({})).focused;
+  } catch (e) {
+    focused = false;
+  }
+  if (focused) return;
+
+  try {
+    browser.notifications.create(`nevoflux-notify-${eventId || Date.now()}`, {
+      type: 'basic',
+      iconUrl: browser.runtime.getURL('icons/icon-48.png'),
+      title,
+      message,
+    });
+  } catch (err) {
+    console.warn('[NevoFlux] notify_user OS notification failed:', err);
+  }
+}
+
+/**
  * Handle a delivered `system:schedule:*` EventBus event routed to the
  * background-owned 'bg-schedule' subscription (see the fan-out loop's
  * `sub.source === 'background'` branch). `event` is the BusEventPayload
@@ -815,6 +885,7 @@ class NativeChannel {
         // so it's included in this connect's resubscribe wave (and every
         // future reconnect's), regardless of whether the sidebar is open.
         ensureBackgroundScheduleSubscription();
+        ensureBackgroundNotifySubscription();
         this.replaySubscriptions();
       }
 
@@ -1335,10 +1406,15 @@ class ChannelManager {
             payload: pushPayload,
           });
         } else if (sub.source === 'background') {
-          // Background's own 'bg-schedule' subscription feeds the avatar jobs
-          // badge directly — no sidebar broadcast here (the sidebar has its
-          // own subscription; broadcasting here too would double-deliver).
-          handleScheduleEvent(eventPayload.event);
+          // Background's own subscriptions feed the avatar jobs badge and the
+          // notify_user OS notification directly — no sidebar broadcast here
+          // (the sidebar has its own subscriptions; broadcasting would
+          // double-deliver). Dispatch by subscription id.
+          if (subId === 'bg-notify') {
+            handleUserNotification(eventPayload.event);
+          } else {
+            handleScheduleEvent(eventPayload.event);
+          }
         }
       }
       // Don't fall through to sidebar broadcast — we handled routing above
