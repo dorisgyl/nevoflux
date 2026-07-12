@@ -4621,6 +4621,24 @@ body {
   .job-card {
     background: color-mix(in srgb, var(--nevo-surface) 70%, transparent);
   }
+
+  /* Iteration verify chip — lift the semi-transparent status backgrounds for dark bg. */
+  .iter-verify-chip.iter-verify-pass {
+    background: color-mix(in srgb, var(--nevo-success) 25%, transparent);
+    border: 1px solid color-mix(in srgb, var(--nevo-success) 45%, transparent);
+  }
+  .iter-verify-chip.iter-verify-fail {
+    background: color-mix(in srgb, var(--nevo-error) 25%, transparent);
+    border: 1px solid color-mix(in srgb, var(--nevo-error) 45%, transparent);
+  }
+  .iter-verify-reason.iter-verify-pass {
+    background: color-mix(in srgb, var(--nevo-success) 14%, transparent);
+    border-left: 2px solid color-mix(in srgb, var(--nevo-success) 50%, transparent);
+  }
+  .iter-verify-reason.iter-verify-fail {
+    background: color-mix(in srgb, var(--nevo-error) 14%, transparent);
+    border-left: 2px solid color-mix(in srgb, var(--nevo-error) 50%, transparent);
+  }
 }
 
 /* ============================================

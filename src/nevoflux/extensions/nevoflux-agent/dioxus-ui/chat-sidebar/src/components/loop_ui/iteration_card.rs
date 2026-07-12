@@ -40,22 +40,28 @@ pub fn IterationCard(loop_id: String, row: IterationRow) -> Element {
                     span { class: "iter-duration", "{ms}ms" }
                 }
                 match row.verify_passed {
-                    Some(true) => rsx! {
-                        span {
-                            class: "iter-verify-chip iter-verify-pass",
-                            title: "{row.verify_reason.clone().unwrap_or_default()}",
-                            role: "status",
-                            "aria-label": "verify check passed: {row.verify_reason.clone().unwrap_or_default()}",
-                            "✓ verified"
+                    Some(true) => {
+                        let reason = row.verify_reason.clone().unwrap_or_default();
+                        rsx! {
+                            span {
+                                class: "iter-verify-chip iter-verify-pass",
+                                title: "{reason}",
+                                role: "status",
+                                "aria-label": "verify check passed: {reason}",
+                                "✓ verified"
+                            }
                         }
                     },
-                    Some(false) => rsx! {
-                        span {
-                            class: "iter-verify-chip iter-verify-fail",
-                            title: "{row.verify_reason.clone().unwrap_or_default()}",
-                            role: "status",
-                            "aria-label": "verify check failed: {row.verify_reason.clone().unwrap_or_default()}",
-                            "✗ verify failed"
+                    Some(false) => {
+                        let reason = row.verify_reason.clone().unwrap_or_default();
+                        rsx! {
+                            span {
+                                class: "iter-verify-chip iter-verify-fail",
+                                title: "{reason}",
+                                role: "status",
+                                "aria-label": "verify check failed: {reason}",
+                                "✗ verify failed"
+                            }
                         }
                     },
                     None => rsx! {},
