@@ -5236,6 +5236,47 @@ body {
 .iter-status   { color: var(--nevo-text-muted); font-size: 12px; }
 .iter-duration { margin-left: auto; font-size: 12px; }
 
+.iter-verify-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: var(--nevo-radius-full, 9999px);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.iter-verify-chip.iter-verify-pass {
+  color: var(--nevo-success);
+  background: color-mix(in srgb, var(--nevo-success) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--nevo-success) 35%, transparent);
+}
+.iter-verify-chip.iter-verify-fail {
+  color: var(--nevo-error);
+  background: color-mix(in srgb, var(--nevo-error) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--nevo-error) 35%, transparent);
+}
+
+.iter-verify-reason {
+  margin-top: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  border-radius: 0 4px 4px 0;
+  word-break: break-word;
+}
+.iter-verify-reason.iter-verify-pass {
+  color: var(--nevo-success);
+  background: color-mix(in srgb, var(--nevo-success) 8%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--nevo-success) 40%, transparent);
+}
+.iter-verify-reason.iter-verify-fail {
+  color: var(--nevo-error);
+  background: color-mix(in srgb, var(--nevo-error) 8%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--nevo-error) 40%, transparent);
+}
+
 .iter-final-text {
   margin-top: 8px;
   padding: 6px 8px;

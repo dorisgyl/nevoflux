@@ -35,6 +35,14 @@ pub struct IterationRow {
     /// `None` while running or for error iterations. In-memory only — not
     /// persisted across sidebar reload.
     pub final_text: Option<String>,
+    /// W5 §verify verdict for this iteration's programmatic check, if the
+    /// loop has a `verify_check`. `None` when the loop has no verify_check,
+    /// the iteration is still running, or the check failed to parse
+    /// (fail-open — see `finalize_iteration_ok` in the daemon).
+    pub verify_passed: Option<bool>,
+    /// Human-readable reason paired with `verify_passed` (e.g. "check '...'
+    /// passed"). `None` whenever `verify_passed` is `None`.
+    pub verify_reason: Option<String>,
 }
 
 impl LoopState {

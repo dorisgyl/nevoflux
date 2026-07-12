@@ -821,6 +821,13 @@ pub struct LoopIterationEndPayload {
     /// publisher. `None` for error iterations.
     #[serde(default)]
     pub final_text: Option<String>,
+    /// W5 §verify verdict for this iteration's programmatic check. `None`
+    /// when the loop has no `verify_check` or the check failed to parse.
+    #[serde(default)]
+    pub verify_passed: Option<bool>,
+    /// Human-readable reason paired with `verify_passed`.
+    #[serde(default)]
+    pub verify_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

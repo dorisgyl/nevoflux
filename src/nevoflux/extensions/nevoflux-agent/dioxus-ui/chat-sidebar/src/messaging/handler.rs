@@ -1980,6 +1980,8 @@ fn apply_loop_event(mut ctx: crate::context::AppContext, topic: &str, payload: &
                         fire_reason: p.fire_reason,
                         tool_calls_summary: serde_json::Value::Null,
                         final_text: None,
+                        verify_passed: None,
+                        verify_reason: None,
                     });
                 }
             }
@@ -1998,6 +2000,8 @@ fn apply_loop_event(mut ctx: crate::context::AppContext, topic: &str, payload: &
                         row.status = p.status;
                         row.tool_calls_summary = p.tool_calls_summary;
                         row.final_text = p.final_text;
+                        row.verify_passed = p.verify_passed;
+                        row.verify_reason = p.verify_reason;
                     } else {
                         // No matching start row (start was missed) — push a fresh one.
                         s.push_or_update_iteration(IterationRow {
@@ -2008,6 +2012,8 @@ fn apply_loop_event(mut ctx: crate::context::AppContext, topic: &str, payload: &
                             fire_reason: String::new(),
                             tool_calls_summary: p.tool_calls_summary,
                             final_text: p.final_text,
+                            verify_passed: p.verify_passed,
+                            verify_reason: p.verify_reason,
                         });
                     }
                 }
