@@ -57,6 +57,16 @@ Call `loop.scratchpad.set({ content })` with the **full replacement content**. B
 
 Use scratchpad to remember: cursor positions, last-seen IDs, derived state, the next thing you intend to do.
 
+## State + logs discipline
+
+Each iteration now sees a `recent_runs` block in `<LOOP-CONTEXT>` — the last few iterations' one-line results. Use it: do NOT redo work a recent run already did.
+
+Keep two kinds of memory:
+- **State** (the 4 KB scratchpad): the durable picture — skip-lists ("already handled X"), your current hypothesis, cursors/last-seen IDs, lessons learned. Read it at the top of every run; keep it small and current.
+- **Logs** (automatic): the system records each run's one-line result (its `final_text`). End every run by stating a single clear result line — that line becomes your log for future runs, so make it specific ("no change since cursor 4821" / "filed 2 new items"), never "done".
+
+A loop that maintains good state stops repeating itself and gets more valuable the longer it runs.
+
 ## time:dynamic protocol
 
 Fenced JSON at the end of your output:
