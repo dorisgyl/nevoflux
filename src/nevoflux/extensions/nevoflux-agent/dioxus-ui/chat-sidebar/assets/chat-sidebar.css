@@ -5327,6 +5327,115 @@ body {
   .loop-iter-card.status-running { animation: none; }
 }
 
+/* --- /loop evolve (W4): "Evolve now" + proposal accept/reject card --- */
+
+.loop-evolve-btn {
+  color: var(--nevo-primary);
+  border-color: color-mix(in srgb, var(--nevo-primary) 40%, var(--nevo-border));
+}
+.loop-evolve-btn:hover {
+  background: var(--nevo-primary-light);
+  border-color: var(--nevo-primary);
+  color: var(--nevo-primary);
+}
+
+.loop-proposal-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nevo-space-sm);
+  margin-top: var(--nevo-space-sm);
+  padding: var(--nevo-space-md);
+  border: 1px solid color-mix(in srgb, var(--nevo-primary) 35%, var(--nevo-border));
+  border-radius: var(--nevo-radius-md);
+  background: var(--nevo-primary-light);
+}
+
+.loop-proposal-header {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--nevo-primary);
+}
+
+.loop-proposal-rationale {
+  font-size: var(--nevo-font-size-sm);
+  line-height: 1.4;
+  color: var(--nevo-text);
+  word-break: break-word;
+}
+
+.loop-proposal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.loop-proposal-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--nevo-text-muted);
+}
+
+.loop-proposal-field-value {
+  margin: 0;
+  padding: 6px 8px;
+  font-family: var(--nevo-font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--nevo-text);
+  background: var(--nevo-surface);
+  border: 1px solid var(--nevo-border);
+  border-radius: var(--nevo-radius-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.loop-proposal-actions {
+  display: flex;
+  gap: var(--nevo-space-xs);
+}
+
+.loop-proposal-accept-btn {
+  border-color: var(--nevo-success);
+  color: var(--nevo-success);
+}
+.loop-proposal-accept-btn:hover {
+  background: color-mix(in srgb, var(--nevo-success) 12%, transparent);
+  border-color: var(--nevo-success);
+  color: var(--nevo-success);
+}
+
+.loop-proposal-reject-btn {
+  border-color: var(--nevo-error);
+  color: var(--nevo-error);
+}
+.loop-proposal-reject-btn:hover {
+  background: color-mix(in srgb, var(--nevo-error) 8%, transparent);
+  border-color: var(--nevo-error);
+  color: var(--nevo-error);
+}
+
+@media (prefers-color-scheme: dark) {
+  .loop-proposal-card {
+    background: color-mix(in srgb, var(--nevo-primary) 15%, transparent);
+    border-color: color-mix(in srgb, var(--nevo-primary) 45%, transparent);
+  }
+  .loop-proposal-field-value {
+    background: color-mix(in srgb, var(--nevo-surface) 70%, transparent);
+  }
+  .loop-proposal-accept-btn:hover {
+    background: color-mix(in srgb, var(--nevo-success) 20%, transparent);
+  }
+  .loop-proposal-reject-btn:hover {
+    background: color-mix(in srgb, var(--nevo-error) 20%, transparent);
+  }
+}
+
 /* ============================================
    Markdown Extras (rendered by markdown-render crate)
    Tables come wrapped in .md-table-wrap for horizontal scroll.

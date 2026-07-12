@@ -24,7 +24,7 @@ pub use agent::*;
 pub use permission::*;
 pub use connection::*;
 pub use history::*;
-pub use loop_state::{IterationRow, LoopState};
+pub use loop_state::{IterationRow, LoopProposalUi, LoopState};
 pub use mcp::*;
 pub use ask_user::*;
 pub use file_picker::*;

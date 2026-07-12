@@ -49,6 +49,9 @@ pub use chat::{
     LoopCancelCommandPayload, LoopCancelledPayload, LoopCreatedPayload,
     LoopIterationEndPayload, LoopIterationStartPayload,
     LoopScratchpadChangedPayload, LoopStateChangedPayload, LoopTriggerDroppedPayload,
+    // /loop evolve payloads (W4)
+    LoopProposalPayload, LoopProposalResolvedPayload,
+    LoopEvolveCommandPayload, LoopProposalRespondCommandPayload,
 };
 
 // Re-export EventBus types

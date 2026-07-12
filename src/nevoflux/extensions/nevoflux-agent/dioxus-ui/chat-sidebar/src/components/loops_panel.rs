@@ -22,8 +22,8 @@ use wasm_bindgen_futures::spawn_local;
 
 use crate::components::loop_ui::IterationCard;
 use crate::context::use_app_context;
-use crate::messaging::send_loop_cancel;
-use crate::state::LoopState;
+use crate::messaging::{send_loop_cancel, send_loop_evolve, send_loop_proposal_respond};
+use crate::state::{LoopProposalUi, LoopState};
 
 /// True when a loop has reached a terminal state and belongs in Completed.
 fn is_terminal(state: &str) -> bool {
@@ -218,7 +218,18 @@ fn LoopJobCard(state: LoopState) -> Element {
         });
     };
 
+    let evolve_loop_id = state.loop_id.clone();
+    let on_evolve = move |_| {
+        let l = evolve_loop_id.clone();
+        spawn_local(async move {
+            if let Err(e) = send_loop_evolve(&l).await {
+                tracing::warn!("loop evolve failed: {}", e);
+            }
+        });
+    };
+
     let card_loop_id = state.loop_id.clone();
+    let proposal = state.pending_proposal.clone();
 
     rsx! {
         div { class: "job-card",
@@ -250,15 +261,24 @@ fn LoopJobCard(state: LoopState) -> Element {
                 }
             }
 
-            // Terminal loops are done — no cancel; active loops keep it.
+            // Terminal loops are done — no cancel/evolve; active loops keep them.
             if !terminal {
                 div { class: "job-card-actions",
+                    button {
+                        class: "job-action-btn loop-evolve-btn",
+                        onclick: on_evolve,
+                        "Evolve now"
+                    }
                     button {
                         class: "job-action-btn job-action-danger-ghost",
                         onclick: on_cancel,
                         "Cancel"
                     }
                 }
+            }
+
+            if let Some(p) = proposal {
+                LoopProposalCard { loop_id: card_loop_id.clone(), proposal: p }
             }
 
             button {
@@ -279,6 +299,67 @@ fn LoopJobCard(state: LoopState) -> Element {
                     } else {
                         div { class: "job-history-empty", "No iterations yet." }
                     }
+                }
+            }
+        }
+    }
+}
+
+/// Renders a pending `/loop evolve` self-improvement proposal: the
+/// rationale, a compact preview of the proposed prompt_text/gate_spec, and
+/// Accept/Reject buttons that resolve it via `loop_proposal_respond`.
+#[component]
+fn LoopProposalCard(loop_id: String, proposal: LoopProposalUi) -> Element {
+    let _ = &loop_id; // kept for future per-loop correlation/logging
+    let proposal_id = proposal.id.clone();
+    let accept_id = proposal_id.clone();
+    let reject_id = proposal_id.clone();
+
+    let on_accept = move |_| {
+        let id = accept_id.clone();
+        spawn_local(async move {
+            if let Err(e) = send_loop_proposal_respond(&id, true).await {
+                tracing::warn!("loop proposal accept failed: {}", e);
+            }
+        });
+    };
+    let on_reject = move |_| {
+        let id = reject_id.clone();
+        spawn_local(async move {
+            if let Err(e) = send_loop_proposal_respond(&id, false).await {
+                tracing::warn!("loop proposal reject failed: {}", e);
+            }
+        });
+    };
+
+    rsx! {
+        div { class: "loop-proposal-card",
+            div { class: "loop-proposal-header", "Proposed improvement" }
+            div { class: "loop-proposal-rationale", "{proposal.rationale}" }
+
+            if let Some(prompt) = proposal.proposed_prompt_text.as_deref() {
+                div { class: "loop-proposal-field",
+                    span { class: "loop-proposal-field-label", "proposed contract" }
+                    pre { class: "loop-proposal-field-value", "{prompt}" }
+                }
+            }
+            if let Some(gate) = proposal.proposed_gate_spec.as_deref() {
+                div { class: "loop-proposal-field",
+                    span { class: "loop-proposal-field-label", "proposed gate" }
+                    pre { class: "loop-proposal-field-value", "{gate}" }
+                }
+            }
+
+            div { class: "loop-proposal-actions",
+                button {
+                    class: "job-action-btn loop-proposal-accept-btn",
+                    onclick: on_accept,
+                    "Accept"
+                }
+                button {
+                    class: "job-action-btn loop-proposal-reject-btn",
+                    onclick: on_reject,
+                    "Reject"
                 }
             }
         }

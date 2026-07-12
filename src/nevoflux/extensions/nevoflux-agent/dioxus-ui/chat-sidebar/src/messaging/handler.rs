@@ -168,7 +168,9 @@ fn handle_chat_message(ctx: AppContext, message: ChatMessage) {
         ChatMessage::PlanResponse(_) |
         ChatMessage::ToolAuthResponse(_) |
         ChatMessage::SkillsUpdateResponse(_) |
-        ChatMessage::LoopCancelCommand(_) => {
+        ChatMessage::LoopCancelCommand(_) |
+        ChatMessage::LoopEvolveCommand(_) |
+        ChatMessage::LoopProposalRespondCommand(_) => {
             tracing::warn!("Received unexpected ToAgent message in sidebar");
         }
     }
@@ -1936,13 +1938,14 @@ fn handle_skill_list_response(mut ctx: AppContext, data: serde_json::Value) {
 
 /// Materialize a `system:loop:*` payload into `ctx.loops`.
 /// Topics: created, state_changed, iteration_start, iteration_end,
-/// scratchpad_changed, trigger_dropped, cancelled.
+/// scratchpad_changed, trigger_dropped, cancelled, proposal (W4 evolve),
+/// proposal_resolved (W4 evolve).
 fn apply_loop_event(mut ctx: crate::context::AppContext, topic: &str, payload: &serde_json::Value) {
-    use crate::state::{IterationRow, LoopState};
+    use crate::state::{IterationRow, LoopProposalUi, LoopState};
     use shared_protocol::{
         LoopCancelledPayload, LoopCreatedPayload, LoopIterationEndPayload,
-        LoopIterationStartPayload, LoopScratchpadChangedPayload, LoopStateChangedPayload,
-        LoopTriggerDroppedPayload,
+        LoopIterationStartPayload, LoopProposalPayload, LoopProposalResolvedPayload,
+        LoopScratchpadChangedPayload, LoopStateChangedPayload, LoopTriggerDroppedPayload,
     };
 
     match topic {
@@ -2043,6 +2046,27 @@ fn apply_loop_event(mut ctx: crate::context::AppContext, topic: &str, payload: &
                     s.state = "cancelled".into();
                 }
                 let _ = p; // by/force not yet rendered in MVP
+            }
+        }
+        "system:loop:proposal" => {
+            if let Ok(p) = serde_json::from_value::<LoopProposalPayload>(payload.clone()) {
+                let mut loops = ctx.loops.write();
+                if let Some(s) = loops.get_mut(&p.loop_id) {
+                    s.pending_proposal = Some(LoopProposalUi {
+                        id: p.id,
+                        rationale: p.rationale,
+                        proposed_prompt_text: p.proposed_prompt_text,
+                        proposed_gate_spec: p.proposed_gate_spec,
+                    });
+                }
+            }
+        }
+        "system:loop:proposal_resolved" => {
+            if let Ok(p) = serde_json::from_value::<LoopProposalResolvedPayload>(payload.clone()) {
+                let mut loops = ctx.loops.write();
+                if let Some(s) = loops.get_mut(&p.loop_id) {
+                    s.pending_proposal = None;
+                }
             }
         }
         _ => {

@@ -21,6 +21,20 @@ pub struct LoopState {
     pub scratchpad_bytes: i64,
     /// Most recent first; capped at 20.
     pub iterations: VecDeque<IterationRow>,
+    /// A pending `/loop evolve` self-improvement proposal awaiting a human
+    /// accept/reject, if any. Set by `system:loop:proposal`, cleared by
+    /// `system:loop:proposal_resolved`.
+    pub pending_proposal: Option<LoopProposalUi>,
+}
+
+/// Sidebar-side view of a pending `/loop evolve` proposal, populated from
+/// the `system:loop:proposal` EventBus delivery.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoopProposalUi {
+    pub id: String,
+    pub rationale: String,
+    pub proposed_prompt_text: Option<String>,
+    pub proposed_gate_spec: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

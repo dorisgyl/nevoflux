@@ -647,6 +647,12 @@ pub enum ChatMessage {
     /// hard-cancel per spec §8.3; false is the soft cancel that lets the
     /// current iteration finish.
     LoopCancelCommand(LoopCancelCommandPayload),
+    /// Ask the daemon to run the `/loop evolve` meta-pass for a loop
+    /// (Sidebar → Agent, W4 evolve).
+    LoopEvolveCommand(LoopEvolveCommandPayload),
+    /// Accept/reject a pending `/loop evolve` proposal (Sidebar → Agent,
+    /// W4 evolve).
+    LoopProposalRespondCommand(LoopProposalRespondCommandPayload),
 
     // ========== Agent → Sidebar ==========
     /// Stream chunk
@@ -711,6 +717,8 @@ impl ChatMessage {
             Self::ToolAuthResponse(_) |
             Self::SkillsUpdateResponse(_) |
             Self::LoopCancelCommand(_) |
+            Self::LoopEvolveCommand(_) |
+            Self::LoopProposalRespondCommand(_) |
             Self::EventsRequest(_) => MessageDirection::ToAgent,
 
             // Agent → Sidebar
@@ -749,6 +757,8 @@ impl ChatMessage {
             Self::ToolAuthResponse(_) => None,
             Self::SkillsUpdateResponse(_) => None,
             Self::LoopCancelCommand(p) => Some(&p.session_id),
+            Self::LoopEvolveCommand(_) => None,
+            Self::LoopProposalRespondCommand(_) => None,
             Self::StreamChunk(_) => None, // New protocol doesn't include session_id
             Self::StreamEnd(p) => Some(&p.session_id),
             Self::ContentBlock(p) => Some(&p.session_id),
@@ -860,6 +870,47 @@ pub struct LoopCancelCommandPayload {
     pub loop_id: String,
     #[serde(default)]
     pub force: bool,
+}
+
+/// `system:loop:proposal` (W4 evolve) — a self-improvement proposal became
+/// pending for a loop. Carries everything the accept/reject UI needs to
+/// render the diff without a follow-up fetch.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoopProposalPayload {
+    pub session_id: String,
+    pub loop_id: String,
+    pub id: String,
+    pub rationale: String,
+    #[serde(default)]
+    pub proposed_prompt_text: Option<String>,
+    #[serde(default)]
+    pub proposed_gate_spec: Option<String>,
+}
+
+/// `system:loop:proposal_resolved` (W4 evolve) — a pending proposal was
+/// accepted or rejected (by a human via `loop_proposal_respond`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoopProposalResolvedPayload {
+    pub session_id: String,
+    pub loop_id: String,
+    pub proposal_id: String,
+    pub accepted: bool,
+}
+
+/// Ask the daemon to run the `/loop evolve` meta-pass for a loop
+/// (Sidebar → Agent). Mirrors the `loop_evolve {loop_id}` tool's arg shape.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoopEvolveCommandPayload {
+    pub loop_id: String,
+}
+
+/// Accept or reject a pending `/loop evolve` proposal (Sidebar → Agent).
+/// Mirrors the `loop_proposal_respond {proposal_id, accept}` tool's arg
+/// shape.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoopProposalRespondCommandPayload {
+    pub proposal_id: String,
+    pub accept: bool,
 }
 
 // =============================================================================
