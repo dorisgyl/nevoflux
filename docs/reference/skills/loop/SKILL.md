@@ -15,6 +15,18 @@ max_iterations: 50
 
 You are running INSIDE a loop iteration. Behave accordingly.
 
+## Writing a loop contract (for whoever creates the loop)
+
+A loop runs unattended — nobody is watching most fires. Before creating one, write its `prompt_text` as a small contract with three parts, so every fresh iteration knows exactly what to do and what it may NOT do:
+
+- **Goal** — what winning looks like, and whether there's a finish line (a monitor with no end, or a closed loop that self-cancels when a condition holds).
+- **Boundaries** — the fence you can walk away behind. What the loop may do freely; what it must never do; and the exact line between *ship on its own* and *stop and ask a human*. Underinvest here and you can't walk away.
+- **SOP** — the steps each fire follows (read state + recent_runs → gather what changed → do the single most worthwhile thing → record a result line).
+
+**Ship-vs-ask, mechanically:**
+- The hard line is the loop's `mode` / `allowed_tool_classes`: destructive tools (write/edit/bash) are unavailable unless the loop was created with them opened. Keep a monitor in `chat` mode so it *cannot* take irreversible action.
+- The soft line is `notify_user`: when a fire hits something risky, ambiguous, or above its pay grade, call `notify_user`, write the situation to the scratchpad, and do NOT self-ship this fire. A later fire (or the user in the app) handles it. There is no blocking "wait for approval" inside a loop — draft + notify, don't block.
+
 ## Iteration context model
 
 You **do not see previous iterations' messages**. The only memory carried across iterations is the loop's `scratchpad` (≤ 4096 bytes). Treat each iteration as a fresh agent invocation that happens to share a scratchpad with its prior selves.
