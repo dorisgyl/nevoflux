@@ -90,6 +90,15 @@ Keep two kinds of memory:
 
 A loop that maintains good state stops repeating itself and gets more valuable the longer it runs.
 
+## Verify (prove each run)
+
+A loop may carry an optional `verify` check (set via `loop_create`'s `verify` param — same shape as /goal's `check`: `{tool?, matches, negate?}`). After each iteration, the check runs against that iteration's real tool-result content and the pass/fail verdict is stored on the run — shown as a chip on the run in the Loop Jobs panel, not just whatever your `final_text` claims.
+
+- **Verify by independent read-back, not self-certification.** The check only sees actual tool-result content, never your prose. Run the real check — the same command/fetch/read the `matches` pattern is looking for — inside the iteration so its output lands in a tool result; don't just assert the outcome in `final_text` and hope it matches.
+- `tool` (optional) scopes the check to one tool's output; omit to match any tool's result from the iteration.
+- `matches` is a substring or `/regex/`; `negate: true` flips it to "must be absent" (e.g. proving an error string is gone).
+- Prefer `verify` over eyeballing `final_text` for any loop with a machine-checkable outcome — it turns "I think it worked" into a stored, auditable pass/fail.
+
 ## time:dynamic protocol
 
 Fenced JSON at the end of your output:
