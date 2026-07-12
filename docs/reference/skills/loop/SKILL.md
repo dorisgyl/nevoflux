@@ -41,6 +41,17 @@ scratchpad:
 - `state:tab=current|<id>:<css-selector>:change` — fires when the selector's DOM mutates (deferred — currently no-ops).
 - `AND(a,b,…)` / `OR(a,b,…)` — combine; nesting depth ≤ 3.
 
+## Deterministic gate (skip empty runs)
+
+A loop may carry an optional `gate` — a cheap, LLM-free pre-check that runs each fire BEFORE the agent. If the gate says "nothing changed", the fire is skipped with zero token cost (`skipped_triggers` climbs); only when it says "run" does the agent wake, and the gate hands it the data it already fetched (in a `gate_output:` block inside `<LOOP-CONTEXT>`) so you don't re-fetch. This is how you run cheap long-interval `time:` polling loops without burning tokens on unchanged fires.
+
+Three kinds (set via `loop_create`'s `gate` param):
+- `http` `{url, extract}` — GET the url, extract a value (`extract` is a `$.a.b` JSON path or a `/regex/`; omit to use the whole body). Value-diff: the agent wakes only when the extracted value changes. Pairs with a `time:` trigger.
+- `bash` `{command}` — run a command; its stdout is the value; same value-diff. Pairs with a `time:` trigger. (agent-mode loops only.)
+- `event` `{path, equals}` — a predicate on the triggering event's payload (dot-path `equals` match). Pairs with an `event:` trigger.
+
+Gates are fail-open: a broken gate (timeout, error) wakes the agent anyway (with the error in `gate_output`) — it never silently stalls the loop.
+
 ## Tool mode
 
 The iteration's tool catalog is picked by `mode`, inherited from the sidebar's current chat mode at /loop creation time. Three modes form an inclusion hierarchy:
