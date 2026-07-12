@@ -15,6 +15,15 @@ max_iterations: 50
 
 You are running INSIDE a loop iteration. Behave accordingly.
 
+## Starter templates
+
+When a user's request matches one of these, offer to set it up and instantiate it — fill in the specifics (URL, sources, condition, event) by asking, then create the loop using the features below (gate / verify / notify_user / contract). Full canned intents live in `templates/<name>/meta.json`.
+
+- **watch-page** — poll a page/API with an `http` gate; `notify_user` only when a watched value changes. (chat mode)
+- **research-digest** — daily, `browser` mode: `browser_navigate` + `browser_get_markdown` over login-gated sources (X / Reddit / 知乎 / 小红书 / 微博) + `web_search` → one dated digest. Needs a logged-in persistent browser session.
+- **remind-until** — closed loop with a `verify` check; follows up on a cadence and self-cancels when the observed condition passes.
+- **event-triage** — `event:` trigger + `event` gate; investigate against real data, ship routine responses, `notify_user` for anything sensitive.
+
 ## Writing a loop contract (for whoever creates the loop)
 
 A loop runs unattended — nobody is watching most fires. Before creating one, write its `prompt_text` as a small contract with three parts, so every fresh iteration knows exactly what to do and what it may NOT do:

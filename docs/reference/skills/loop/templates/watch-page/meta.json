@@ -1,0 +1,6 @@
+{
+  "name": "watch-page",
+  "label": "Watch a page",
+  "desc": "Poll a web page or API and notify you the moment a value you care about changes.",
+  "description": "Set up a loop that watches a page or API and only bothers me when something actually changes. Ask me for the URL and exactly what to watch (a price, a stock/availability status, a headline, a number on a dashboard). Create the loop with a time: trigger at a sensible interval and an http gate that extracts that value (a $.json.path or a /regex/) and value-diffs it — so unchanged fires cost zero tokens and only a real change wakes the agent. When it changes, call notify_user with a short, specific message (old value → new value) so it reaches me even with the sidebar closed. Keep the last-seen value in the scratchpad. Chat mode is fine — this only reads and notifies, it never needs to take action."
+}

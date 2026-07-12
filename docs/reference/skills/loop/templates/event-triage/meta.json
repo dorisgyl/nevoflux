@@ -1,0 +1,6 @@
+{
+  "name": "event-triage",
+  "label": "Event triage",
+  "desc": "When a chosen event fires, investigate it against real data and act within a clear fence.",
+  "description": "Set up an event-triggered triage loop. Ask me which EventBus event/topic should wake it and what counts as actionable. Create the loop with an event: trigger and an event gate ({path, equals}) so it only wakes on payloads that actually matter. Each fire: investigate the event against real data BEFORE acting (read the relevant page/records — never act blind), then act within a clear ship-vs-ask fence written into the contract: routine, low-risk responses ship on their own; anything sensitive or ambiguous goes to notify_user for me to handle, and it never does anything destructive unless I opened those tool classes. File a short signal/note for any recurring pattern in the scratchpad so the triage gets smarter over time. Record a one-line result each run."
+}
