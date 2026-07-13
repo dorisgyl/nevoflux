@@ -1,5 +1,5 @@
-import init, * as bindings from './chat-sidebar-580a0e2188bdac8c.js';
-const wasm = await init({ module_or_path: './chat-sidebar-580a0e2188bdac8c_bg.wasm' });
+import init, * as bindings from './chat-sidebar-5363e676e179bc84.js';
+const wasm = await init({ module_or_path: './chat-sidebar-5363e676e179bc84_bg.wasm' });
 
 
 window.wasmBindings = bindings;

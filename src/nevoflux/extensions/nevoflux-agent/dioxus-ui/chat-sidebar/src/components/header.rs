@@ -119,28 +119,16 @@ pub fn Header() -> Element {
         "header-btn jobs-btn"
     };
 
-    // Calendar click: when NOT maximized, jump to the maximized form with the
-    // Jobs panel deep-linked (`&panel=jobs`); when already maximized, just
-    // toggle the panel (confirmed decision).
-    let toggle_jobs = {
-        let ctx = ctx.clone();
-        move |_| {
-            if is_maximized {
-                let mut ctx = ctx.clone();
-                let current = *ctx.show_jobs_panel.read();
-                ctx.show_jobs_panel.set(!current);
-            } else {
-                // Preserve the user gesture: close the sidebar synchronously
-                // before the async tab open (mirrors handle_maximize).
-                nevoflux_api::try_close_sidebar_sync();
-                let ctx = ctx.clone();
-                spawn_local(async move {
-                    if let Err(e) = do_maximize(ctx, "&panel=jobs").await {
-                        tracing::error!("Failed to maximize to Jobs: {}", e);
-                    }
-                });
-            }
-        }
+    // Calendar click (docked form only — the button is hidden when maximized,
+    // where LeftMenu owns the Schedule Jobs entry). The whole flow — open the
+    // maximized Jobs view (`&panel=jobs`) + close the sidebar — is owned by the
+    // CSP-safe `.jobs-btn` capture-phase handler in sidebar-boot.js, which
+    // stopPropagation's this Dioxus onclick. Mirrors handle_minimize: the Rust
+    // try_close_sidebar_sync() close is CSP-dead (js_sys::eval is blocked by the
+    // extension CSP), so plain JS must own the sidebar close within the gesture.
+    // This closure only records intent and never fires in the built artifact.
+    let toggle_jobs = move |_| {
+        tracing::info!("Schedule Jobs clicked (handled by sidebar-boot.js)");
     };
 
     // Read avatar
@@ -163,32 +151,36 @@ pub fn Header() -> Element {
 
             // Right side: Action buttons
             div { class: "header-right",
-                // Scheduled jobs (calendar) button
-                button {
-                    class: "{jobs_btn_class}",
-                    aria_label: "Scheduled jobs",
-                    title: "Scheduled jobs",
-                    onclick: toggle_jobs,
-                    svg {
-                        xmlns: "http://www.w3.org/2000/svg",
-                        view_box: "0 0 24 24",
-                        fill: "none",
-                        stroke: "currentColor",
-                        stroke_width: "2",
-                        stroke_linecap: "round",
-                        stroke_linejoin: "round",
-                        width: "16",
-                        height: "16",
-                        rect { x: "3", y: "4", width: "18", height: "18", rx: "2" }
-                        line { x1: "16", y1: "2", x2: "16", y2: "6" }
-                        line { x1: "8", y1: "2", x2: "8", y2: "6" }
-                        line { x1: "3", y1: "10", x2: "21", y2: "10" }
-                        circle { cx: "12", cy: "16", r: "2", fill: "currentColor", stroke: "none" }
-                    }
-                    if jobs_failed {
-                        span { class: "jobs-btn-dot failed" }
-                    } else if has_jobs {
-                        span { class: "jobs-btn-dot" }
+                // Scheduled jobs (calendar) button — docked form only. In the
+                // maximized form LeftMenu owns the Schedule Jobs entry, so this
+                // header button would be a duplicate; hide it there.
+                if !is_maximized {
+                    button {
+                        class: "{jobs_btn_class}",
+                        aria_label: "Scheduled jobs",
+                        title: "Scheduled jobs",
+                        onclick: toggle_jobs,
+                        svg {
+                            xmlns: "http://www.w3.org/2000/svg",
+                            view_box: "0 0 24 24",
+                            fill: "none",
+                            stroke: "currentColor",
+                            stroke_width: "2",
+                            stroke_linecap: "round",
+                            stroke_linejoin: "round",
+                            width: "16",
+                            height: "16",
+                            rect { x: "3", y: "4", width: "18", height: "18", rx: "2" }
+                            line { x1: "16", y1: "2", x2: "16", y2: "6" }
+                            line { x1: "8", y1: "2", x2: "8", y2: "6" }
+                            line { x1: "3", y1: "10", x2: "21", y2: "10" }
+                            circle { cx: "12", cy: "16", r: "2", fill: "currentColor", stroke: "none" }
+                        }
+                        if jobs_failed {
+                            span { class: "jobs-btn-dot failed" }
+                        } else if has_jobs {
+                            span { class: "jobs-btn-dot" }
+                        }
                     }
                 }
 
