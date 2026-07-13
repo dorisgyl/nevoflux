@@ -167,6 +167,7 @@
       {
         "id": "TabInfo",
         "type": "object",
+        "additionalProperties": true,
         "properties": {
           "id": { "type": "integer" },
           "url": { "type": "string" },

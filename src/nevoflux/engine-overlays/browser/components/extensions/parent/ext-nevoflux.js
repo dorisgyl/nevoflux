@@ -907,24 +907,25 @@ this.nevoflux = class extends ExtensionAPI {
         },
 
         async listTabs(windowId, scope, scopeId) {
-          // Get target window - use specified windowId or fall back to current/top window
+          // Get target window - use specified windowId or fall back to current/top
+          // window. Note: an omitted optional `windowId` arrives as `null` (not
+          // `undefined`) through WebExtension schema marshalling, so treat both as
+          // "unspecified" and fall back to the top window.
           let win;
-          try {
-            if (windowId !== undefined) {
-              const wrapper = extension.windowManager.get(windowId, extension.context);
-              if (!wrapper) {
-                return [];
-              }
-              win = wrapper;
-            } else {
-              const topWin = extension.windowManager.topWindow;
-              if (!topWin) {
-                return [];
-              }
-              win = extension.windowManager.getWrapper(topWin);
+          if (windowId != null) {
+            const wrapper = extension.windowManager.get(windowId, extension.context);
+            if (!wrapper) {
+              return [];
             }
-          } catch (e) {
-            return [];
+            win = wrapper;
+          } else {
+            // `extension.windowManager` has no `topWindow` — that getter lives
+            // on the shared `windowTracker` global (WindowTrackerBase).
+            const topWin = windowTracker.topWindow;
+            if (!topWin) {
+              return [];
+            }
+            win = extension.windowManager.getWrapper(topWin);
           }
 
           if (!win?.window?.gBrowser?.tabs) {
@@ -1050,11 +1051,11 @@ this.nevoflux = class extends ExtensionAPI {
         async closeWindow(windowId) {
           try {
             let targetWindow;
-            if (windowId !== undefined) {
+            if (windowId != null) {
               const wrapper = extension.windowManager.get(windowId, extension.context);
               targetWindow = wrapper?.window;
             } else {
-              targetWindow = extension.windowManager.topWindow;
+              targetWindow = windowTracker.topWindow;
             }
 
             if (!targetWindow) {
