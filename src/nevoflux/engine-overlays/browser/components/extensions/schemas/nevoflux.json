@@ -176,21 +176,18 @@
           "windowId": { "type": "integer" },
           "status": { "type": "string" },
           "space": {
-            "type": ["object", "null"],
+            "choices": [{ "type": "object", "additionalProperties": true }, { "type": "null" }],
             "optional": true,
-            "additionalProperties": true,
             "description": "The Zen space ({id, name}) the tab belongs to, or null."
           },
           "folder": {
-            "type": ["object", "null"],
+            "choices": [{ "type": "object", "additionalProperties": true }, { "type": "null" }],
             "optional": true,
-            "additionalProperties": true,
             "description": "The non-live Zen folder ({id, name}) the tab belongs to, or null."
           },
           "liveFolder": {
-            "type": ["object", "null"],
+            "choices": [{ "type": "object", "additionalProperties": true }, { "type": "null" }],
             "optional": true,
-            "additionalProperties": true,
             "description": "The Zen live folder ({id, name}) the tab belongs to, or null."
           },
           "discarded": {
