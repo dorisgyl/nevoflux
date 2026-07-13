@@ -1,0 +1,6 @@
+{
+  "name": "research-digest",
+  "label": "Daily research digest",
+  "desc": "Every morning, gather what's new across your sources (incl. login-gated ones) and hand you one digest.",
+  "description": "Set up a daily digest loop in browser mode. Ask me for the topic and the sources — these often include login-gated sites like X, Reddit, 知乎, 小红书, or 微博, so the loop must browser_navigate to each and browser_get_markdown the relevant content (a plain web_search alone can't reach logged-in feeds), plus web_search for the open web. This depends on a logged-in persistent browser session (NEVOFLUX_SESSION_MODE) — state that dependency in the loop's contract; if a source isn't logged in, note it in the digest rather than failing. Use a time: trigger for once a day. Each run: gather what's new since the last run (keep a cursor/last-seen in the scratchpad so you don't repeat items), then produce ONE concise dated digest and surface it as the run's result. Sharpen what's worth including over time based on what I engage with."
+}

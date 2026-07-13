@@ -1,0 +1,6 @@
+{
+  "name": "remind-until",
+  "label": "Remind until done",
+  "desc": "Follow up on a task on a cadence until a concrete condition is met, then stop.",
+  "description": "Set up a closed loop that follows up until something is genuinely done, then self-cancels. Ask me for the task, the cadence, and — critically — the concrete, checkable finish condition (a value on a page, a status, a file, an endpoint returning OK). Add a verify check ({matches, tool?, negate?}) for that condition so each run stores a real pass/fail, and phrase the loop as a self-provable stop: each fire runs the actual check, writes the observed result to the scratchpad, and self-cancels ONLY when the check is observed to pass (never on an assumption). Until then, on each fire do the follow-up work within its boundaries and, if it hits something needing me, call notify_user rather than guessing. This is the loop version of a /goal follow-up: a monitor with a finish line."
+}

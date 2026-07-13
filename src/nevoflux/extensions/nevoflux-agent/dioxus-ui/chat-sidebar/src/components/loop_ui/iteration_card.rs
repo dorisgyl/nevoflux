@@ -39,11 +39,46 @@ pub fn IterationCard(loop_id: String, row: IterationRow) -> Element {
                 if let Some(ms) = duration_ms {
                     span { class: "iter-duration", "{ms}ms" }
                 }
+                match row.verify_passed {
+                    Some(true) => {
+                        let reason = row.verify_reason.clone().unwrap_or_default();
+                        rsx! {
+                            span {
+                                class: "iter-verify-chip iter-verify-pass",
+                                title: "{reason}",
+                                role: "status",
+                                "aria-label": "verify check passed: {reason}",
+                                "✓ verified"
+                            }
+                        }
+                    },
+                    Some(false) => {
+                        let reason = row.verify_reason.clone().unwrap_or_default();
+                        rsx! {
+                            span {
+                                class: "iter-verify-chip iter-verify-fail",
+                                title: "{reason}",
+                                role: "status",
+                                "aria-label": "verify check failed: {reason}",
+                                "✗ verify failed"
+                            }
+                        }
+                    },
+                    None => rsx! {},
+                }
             }
             if expanded() {
                 if let Some(text) = row.final_text.as_deref() {
                     if !text.is_empty() {
                         div { class: "iter-final-text", "{text}" }
+                    }
+                }
+                if let Some(reason) = row.verify_reason.as_deref() {
+                    if !reason.is_empty() {
+                        div {
+                            class: if row.verify_passed == Some(false) { "iter-verify-reason iter-verify-fail" } else { "iter-verify-reason iter-verify-pass" },
+                            "{reason}"
+                        }
                     }
                 }
                 if !trace.is_empty() {

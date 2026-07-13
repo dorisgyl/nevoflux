@@ -68,6 +68,8 @@ pub async fn send_to_agent(message: ChatMessage) -> Result<(), String> {
         ChatMessage::BrowserToolResponse(_) => "browser_tool_response",
         ChatMessage::PickFilesRequest(_) => "pick_files_request",
         ChatMessage::PlanResponse(_) => "plan_response",
+        ChatMessage::LoopEvolveCommand(_) => "loop_evolve_command",
+        ChatMessage::LoopProposalRespondCommand(_) => "loop_proposal_respond_command",
         _ => "other",
     };
 
@@ -202,6 +204,28 @@ pub async fn send_loop_cancel(session_id: &str, loop_id: &str, force: bool) -> R
         session_id: session_id.to_string(),
         loop_id: loop_id.to_string(),
         force,
+    });
+    send_to_agent(message).await
+}
+
+/// Ask the daemon to run the `/loop evolve` meta-pass for a loop (W4).
+/// Fire-and-forget from the UI's POV — the resulting proposal (if any)
+/// arrives asynchronously via the `system:loop:proposal` EventBus delivery.
+pub async fn send_loop_evolve(loop_id: &str) -> Result<(), String> {
+    let message = ChatMessage::LoopEvolveCommand(LoopEvolveCommandPayload {
+        loop_id: loop_id.to_string(),
+    });
+    send_to_agent(message).await
+}
+
+/// Accept or reject a pending `/loop evolve` proposal (W4). The daemon
+/// resolves the proposal and, on accept, applies its proposed
+/// prompt_text/gate_spec onto the loop; either way it emits
+/// `system:loop:proposal_resolved` which clears the pending-review card.
+pub async fn send_loop_proposal_respond(proposal_id: &str, accept: bool) -> Result<(), String> {
+    let message = ChatMessage::LoopProposalRespondCommand(LoopProposalRespondCommandPayload {
+        proposal_id: proposal_id.to_string(),
+        accept,
     });
     send_to_agent(message).await
 }

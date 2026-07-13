@@ -46,6 +46,47 @@
     }, true); // capture phase
 })();
 
+// Scheduled-jobs (calendar) button click handler - MUST be synchronous to
+// preserve the user gesture. Mirrors the maximize handler: the Rust
+// try_close_sidebar_sync() close is CSP-dead (js_sys::eval is blocked by the
+// extension CSP), so the sidebar close has to happen here in plain JS, inside
+// the gesture. Same flow as maximize but deep-links the Jobs panel
+// (&panel=jobs). Only present in the docked form (the button is hidden when
+// maximized, where LeftMenu owns Schedule Jobs), so the maximized guard is
+// belt-and-braces.
+(function() {
+    document.addEventListener('click', function(event) {
+        const button = event.target.closest('.jobs-btn');
+        if (!button) return;
+
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('mode') === 'maximized') return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        console.log('[NevoFlux] Schedule Jobs clicked - synchronous handler');
+
+        // Get data SYNCHRONOUSLY from window globals (set by WASM)
+        const sessionId = window.__nevoflux_session_id || '';
+        const targetTabId = window.__nevoflux_target_tab_id || 0;
+
+        // Build URL synchronously, deep-linking the Jobs panel.
+        const baseUrl = window.location.href.split('?')[0];
+        const newUrl = `${baseUrl}?mode=maximized&session_id=${sessionId}&target_tab_id=${targetTabId}&source_tab_id=${targetTabId}&panel=jobs`;
+
+        console.log('[NevoFlux] Opening maximized Jobs view:', newUrl);
+
+        // Open tab FIRST using window.open (synchronous, executes before close destroys context)
+        window.open(newUrl, '_blank');
+
+        // Then close sidebar (user gesture still valid since no await yet)
+        if (browser.sidebarAction && browser.sidebarAction.close) {
+            browser.sidebarAction.close().catch(e => console.warn('[NevoFlux] close failed:', e));
+        }
+    }, true); // capture phase
+})();
+
 // Restore button click handler - MUST be synchronous to preserve user gesture
 (function() {
     document.addEventListener('click', function(event) {
@@ -73,12 +114,27 @@
             browser.tabs.update(sourceTabId, { active: true }).catch(e => console.warn('[NevoFlux] activate tab failed:', e));
         }
 
-        // Close current maximized tab
+        // Close the maximized tab. Primary path is tabs.remove via getCurrent();
+        // but browser.tabs.getCurrent() can resolve to undefined for some
+        // extension-page-in-tab contexts, in which case the old code silently
+        // skipped the close (tab stayed open, no error logged). These tabs were
+        // opened via window.open(), so they are script-closeable — window.close()
+        // is the robust fallback whenever getCurrent() yields no tab or remove fails.
         browser.tabs.getCurrent().then(tab => {
             if (tab && tab.id) {
-                browser.tabs.remove(tab.id).catch(e => console.warn('[NevoFlux] close tab failed:', e));
+                console.log('[NevoFlux] Restore: closing maximized tab via tabs.remove', tab.id);
+                browser.tabs.remove(tab.id).catch(e => {
+                    console.warn('[NevoFlux] close tab failed, falling back to window.close():', e);
+                    try { window.close(); } catch (_) {}
+                });
+            } else {
+                console.warn('[NevoFlux] Restore: getCurrent() returned no tab, using window.close()');
+                try { window.close(); } catch (e) { console.warn('[NevoFlux] window.close failed:', e); }
             }
-        }).catch(e => console.warn('[NevoFlux] get current tab failed:', e));
+        }).catch(e => {
+            console.warn('[NevoFlux] get current tab failed, using window.close():', e);
+            try { window.close(); } catch (_) {}
+        });
     }, true); // capture phase
 })();
 

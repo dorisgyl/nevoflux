@@ -21,6 +21,50 @@ function escapeRegExp(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * Determine whether an enriched tab (from _getTabInfo, which carries
+ * `space`/`folder`/`liveFolder`) matches a browser_get_tabs `scope`/`scopeId`
+ * filter.
+ *
+ * Behavior:
+ * - scope omitted (default): all tabs EXCEPT those inside a live folder.
+ * - "all": all tabs, including live folders.
+ * - "space" (+ optional scopeId): tabs in that space (omit id = all spaces),
+ *   excluding live folders.
+ * - "folder" (+ optional scopeId): tabs in a non-live folder (omit id = all
+ *   non-live folders), excluding live folders.
+ * - "live_folder" (+ optional scopeId): ONLY tabs in a live folder (omit id =
+ *   all live folders).
+ *
+ * @param {object} tabInfo - Enriched tab object from _getTabInfo.
+ * @param {string} [scope] - One of "all" | "space" | "folder" | "live_folder".
+ * @param {string} [scopeId] - Optional id to narrow the scope.
+ * @returns {boolean}
+ */
+function tabMatchesZenScope(tabInfo, scope, scopeId) {
+  const inLiveFolder = !!tabInfo.liveFolder;
+  switch (scope) {
+    case 'all':
+      return true;
+    case 'space':
+      if (inLiveFolder) return false;
+      if (scopeId && tabInfo.space?.id !== scopeId) return false;
+      return true;
+    case 'folder':
+      if (inLiveFolder) return false;
+      if (!tabInfo.folder) return false;
+      if (scopeId && tabInfo.folder.id !== scopeId) return false;
+      return true;
+    case 'live_folder':
+      if (!inLiveFolder) return false;
+      if (scopeId && tabInfo.liveFolder.id !== scopeId) return false;
+      return true;
+    default:
+      // No scope specified: everything except live-folder tabs.
+      return !inLiveFolder;
+  }
+}
+
 // Default privacy config
 const DEFAULT_PRIVACY_CONFIG = {
   enabled: true,
@@ -753,6 +797,67 @@ this.nevoflux = class extends ExtensionAPI {
             } catch (e) {
               // ownerGlobal may be unavailable
             }
+
+            // Zen space (workspace) the tab belongs to. Best-effort: if the
+            // workspace name lookup fails, fall back to {id, name: id} rather
+            // than throwing and losing the whole tab.
+            let space = null;
+            try {
+              const spaceId = nativeTab.getAttribute?.('zen-workspace-id') || null;
+              if (spaceId) {
+                let name = spaceId;
+                try {
+                  const workspace = nativeTab.ownerGlobal?.gZenWorkspaces?.getWorkspaceFromId?.(
+                    spaceId
+                  );
+                  if (workspace?.name) {
+                    name = workspace.name;
+                  }
+                } catch (e) {
+                  // Name lookup is best-effort; keep the id as the name.
+                }
+                space = { id: spaceId, name };
+              }
+            } catch (e) {
+              // Non-Zen window or dead wrapper — no space info available.
+            }
+
+            // Zen folder / live folder the tab belongs to (nativeTab.group is
+            // the tab group element; Zen folders are tab groups, live folders
+            // are tab groups with isLiveFolder === true).
+            let folder = null;
+            let liveFolder = null;
+            try {
+              const group = nativeTab.group;
+              // A pinned, non-essential tab whose space's pinned-tabs bar is
+              // collapsed reports a `zen-workspace-collapsible-pins`
+              // pseudo-group via `.group` (nsZenCollapsiblePins extends
+              // nsZenFolder extends MozTabbrowserTabGroup). It has no id/name
+              // and is never a real (live) folder, so treat it as "no group"
+              // — matches the `groupIsCollapsiblePins()` guard in
+              // ZenFolders.mjs (module-private there, so re-checked here via
+              // the same tagName predicate).
+              const isCollapsiblePins =
+                group?.tagName?.toLowerCase() === 'zen-workspace-collapsible-pins';
+              if (group && !isCollapsiblePins) {
+                const groupInfo = { id: group.id, name: group.name };
+                if (group.isLiveFolder === true) {
+                  liveFolder = groupInfo;
+                } else {
+                  folder = groupInfo;
+                }
+              }
+            } catch (e) {
+              // group may be unavailable on a dead wrapper.
+            }
+
+            let discarded = false;
+            try {
+              discarded = self.isTabDiscarded(nativeTab);
+            } catch (e) {
+              // Best-effort.
+            }
+
             return {
               id: tabId,
               zenSyncId: nativeTab.id || null, // Zen Browser's persistent tab ID for session association
@@ -764,6 +869,10 @@ this.nevoflux = class extends ExtensionAPI {
               status: nativeTab.linkedBrowser?.webProgress?.isLoadingDocument
                 ? 'loading'
                 : 'complete',
+              space,
+              folder,
+              liveFolder,
+              discarded,
             };
           } catch (e) {
             // Return minimal info on failure to avoid crashing the entire listTabs call
@@ -775,6 +884,10 @@ this.nevoflux = class extends ExtensionAPI {
               index: 0,
               windowId: 0,
               status: 'unknown',
+              space: null,
+              folder: null,
+              liveFolder: null,
+              discarded: false,
             };
           }
         },
@@ -793,25 +906,26 @@ this.nevoflux = class extends ExtensionAPI {
           return this._getTabInfo(tab, resolvedTabId);
         },
 
-        async listTabs(windowId) {
-          // Get target window - use specified windowId or fall back to current/top window
+        async listTabs(windowId, scope, scopeId) {
+          // Get target window - use specified windowId or fall back to current/top
+          // window. Note: an omitted optional `windowId` arrives as `null` (not
+          // `undefined`) through WebExtension schema marshalling, so treat both as
+          // "unspecified" and fall back to the top window.
           let win;
-          try {
-            if (windowId !== undefined) {
-              const wrapper = extension.windowManager.get(windowId, extension.context);
-              if (!wrapper) {
-                return [];
-              }
-              win = wrapper;
-            } else {
-              const topWin = extension.windowManager.topWindow;
-              if (!topWin) {
-                return [];
-              }
-              win = extension.windowManager.getWrapper(topWin);
+          if (windowId != null) {
+            const wrapper = extension.windowManager.get(windowId, extension.context);
+            if (!wrapper) {
+              return [];
             }
-          } catch (e) {
-            return [];
+            win = wrapper;
+          } else {
+            // `extension.windowManager` has no `topWindow` — that getter lives
+            // on the shared `windowTracker` global (WindowTrackerBase).
+            const topWin = windowTracker.topWindow;
+            if (!topWin) {
+              return [];
+            }
+            win = extension.windowManager.getWrapper(topWin);
           }
 
           if (!win?.window?.gBrowser?.tabs) {
@@ -824,7 +938,10 @@ this.nevoflux = class extends ExtensionAPI {
               const tabId = tabTracker.getId(nativeTab);
               const tab = extension.tabManager.get(tabId);
               if (tab) {
-                tabs.push(this._getTabInfo(tab, tabId));
+                const tabInfo = this._getTabInfo(tab, tabId);
+                if (tabMatchesZenScope(tabInfo, scope, scopeId)) {
+                  tabs.push(tabInfo);
+                }
               }
             } catch (e) {
               // Skip tabs that can't be queried (e.g., closing or dead wrappers)
@@ -934,11 +1051,11 @@ this.nevoflux = class extends ExtensionAPI {
         async closeWindow(windowId) {
           try {
             let targetWindow;
-            if (windowId !== undefined) {
+            if (windowId != null) {
               const wrapper = extension.windowManager.get(windowId, extension.context);
               targetWindow = wrapper?.window;
             } else {
-              targetWindow = extension.windowManager.topWindow;
+              targetWindow = windowTracker.topWindow;
             }
 
             if (!targetWindow) {

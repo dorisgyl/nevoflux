@@ -167,6 +167,7 @@
       {
         "id": "TabInfo",
         "type": "object",
+        "additionalProperties": true,
         "properties": {
           "id": { "type": "integer" },
           "url": { "type": "string" },
@@ -174,7 +175,27 @@
           "active": { "type": "boolean" },
           "index": { "type": "integer" },
           "windowId": { "type": "integer" },
-          "status": { "type": "string" }
+          "status": { "type": "string" },
+          "space": {
+            "choices": [{ "type": "object", "additionalProperties": true }, { "type": "null" }],
+            "optional": true,
+            "description": "The Zen space ({id, name}) the tab belongs to, or null."
+          },
+          "folder": {
+            "choices": [{ "type": "object", "additionalProperties": true }, { "type": "null" }],
+            "optional": true,
+            "description": "The non-live Zen folder ({id, name}) the tab belongs to, or null."
+          },
+          "liveFolder": {
+            "choices": [{ "type": "object", "additionalProperties": true }, { "type": "null" }],
+            "optional": true,
+            "description": "The Zen live folder ({id, name}) the tab belongs to, or null."
+          },
+          "discarded": {
+            "type": "boolean",
+            "optional": true,
+            "description": "True if the tab is not loaded (pending/never opened)."
+          }
         }
       },
       {
@@ -937,8 +958,17 @@
         "name": "listTabs",
         "type": "function",
         "async": "promise",
-        "description": "List all open tabs",
-        "parameters": [],
+        "description": "List open tabs, optionally filtered by a Zen-aware scope (space/folder/live_folder). Default (scope omitted) excludes tabs inside a live folder.",
+        "parameters": [
+          { "name": "windowId", "type": "integer", "optional": true },
+          {
+            "name": "scope",
+            "type": "string",
+            "enum": ["all", "space", "folder", "live_folder"],
+            "optional": true
+          },
+          { "name": "scopeId", "type": "string", "optional": true }
+        ],
         "returns": { "type": "array", "items": { "$ref": "TabInfo" } }
       },
       {

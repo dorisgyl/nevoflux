@@ -3984,7 +3984,7 @@ async function executeBrowserTool(request, caller = 'unknown') {
 
       // Tab management
       case 'list_tabs':
-        return await executeListTabs();
+        return await executeListTabs(params);
 
       case 'query_tabs':
         return await executeQueryTabs(params);
@@ -6506,18 +6506,29 @@ async function executeCacheFile(params) {
 // =============================================================================
 
 /**
- * List all open tabs via browser.nevoflux.listTabs()
+ * List all open tabs via browser.nevoflux.listTabs(), optionally filtered by
+ * a Zen-aware scope.
+ *
+ * @param {object} [params]
+ * @param {string} [params.scope] - "all" | "space" | "folder" | "live_folder"
+ * @param {string} [params.scope_id] - Optional space uuid / folder id / live-folder id.
  */
-async function executeListTabs() {
+async function executeListTabs(params) {
+  const scope = params?.scope;
+  const scopeId = params?.scope_id;
   try {
-    // Try privileged API first
+    // Try privileged API first — it's the only path that can resolve Zen
+    // scope/space/folder/live-folder metadata.
     if (isNevofluxApiAvailable()) {
-      const tabs = await browser.nevoflux.listTabs();
-      if (tabs && tabs.length > 0) {
+      const tabs = await browser.nevoflux.listTabs(undefined, scope, scopeId);
+      if (Array.isArray(tabs)) {
         return { success: true, result: { tabs } };
       }
     }
-    // Fallback to standard WebExtension tabs API
+    // Fallback to standard WebExtension tabs API — cannot resolve Zen
+    // spaces/folders/live-folders, so scope filtering isn't possible here.
+    // Degrade gracefully: return all tabs unfiltered, with null Zen fields,
+    // and note that scoping was requested but unavailable.
     const allTabs = await browser.tabs.query({});
     const tabs = allTabs.map((t) => ({
       id: t.id,
@@ -6527,8 +6538,17 @@ async function executeListTabs() {
       index: t.index,
       windowId: t.windowId,
       status: t.status || 'complete',
+      space: null,
+      folder: null,
+      liveFolder: null,
+      discarded: !!t.discarded,
     }));
-    return { success: true, result: { tabs } };
+    const result = { tabs };
+    if (scope) {
+      result.warning =
+        'Zen scope filtering requires the privileged nevoflux API, which is unavailable; returning all tabs unfiltered.';
+    }
+    return { success: true, result };
   } catch (error) {
     return {
       success: false,
