@@ -829,7 +829,17 @@ this.nevoflux = class extends ExtensionAPI {
             let liveFolder = null;
             try {
               const group = nativeTab.group;
-              if (group) {
+              // A pinned, non-essential tab whose space's pinned-tabs bar is
+              // collapsed reports a `zen-workspace-collapsible-pins`
+              // pseudo-group via `.group` (nsZenCollapsiblePins extends
+              // nsZenFolder extends MozTabbrowserTabGroup). It has no id/name
+              // and is never a real (live) folder, so treat it as "no group"
+              // — matches the `groupIsCollapsiblePins()` guard in
+              // ZenFolders.mjs (module-private there, so re-checked here via
+              // the same tagName predicate).
+              const isCollapsiblePins =
+                group?.tagName?.toLowerCase() === 'zen-workspace-collapsible-pins';
+              if (group && !isCollapsiblePins) {
                 const groupInfo = { id: group.id, name: group.name };
                 if (group.isLiveFolder === true) {
                   liveFolder = groupInfo;
