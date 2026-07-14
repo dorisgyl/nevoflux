@@ -438,6 +438,15 @@ const Settings = {
     const form = document.createElement('div');
     form.id = 'llm-modal-form';
 
+    // ToS warning (shown only for providers that require one, e.g. antigravity)
+    const tosWarn = document.createElement('div');
+    tosWarn.className = 'llm-tos-warning';
+    tosWarn.id = 'llm-modal-tos-warning';
+    tosWarn.style.display = 'none';
+    tosWarn.textContent =
+      "Unofficial adapter (antigravity-acp). Using a personal Google account with third-party Antigravity access may violate Google's Terms of Service and risk account suspension. Requires 'antigravity-acp' on PATH.";
+    form.appendChild(tosWarn);
+
     // API Key
     const keyGroup = document.createElement('div');
     keyGroup.className = 'mcp-form-group';
@@ -662,6 +671,10 @@ const Settings = {
     subtitle.textContent = typeLabels[provider.type] || 'Cloud API provider';
 
     const isOpenClaw = provider.id === 'openclaw';
+
+    // Show/hide ToS warning for providers requiring one (e.g. antigravity)
+    const tosWarn = document.getElementById('llm-modal-tos-warning');
+    if (tosWarn) tosWarn.style.display = provider.id === 'antigravity' ? '' : 'none';
 
     // Reset fields
     document.getElementById('llm-modal-apikey').value = '';
