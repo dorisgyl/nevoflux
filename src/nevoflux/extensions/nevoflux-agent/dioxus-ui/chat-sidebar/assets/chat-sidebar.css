@@ -4960,13 +4960,44 @@ body {
 }
 
 .nevo-event-toast {
+  position: relative;
   background: color-mix(in srgb, var(--nevo-surface-elevated, #2a2a30) 95%, white 5%);
   border: 1px solid var(--nevo-border-color, #4a4a54);
   border-radius: 8px;
-  padding: 10px 14px;
+  padding: 10px 30px 10px 14px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   animation: nevo-toast-in 0.25s ease-out, nevo-toast-out 0.3s ease-in 4.7s forwards;
   pointer-events: auto;
+}
+
+.nevo-event-toast-close {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--nevo-text-primary, #f0f0f4);
+  opacity: 0.5;
+  font-size: 16px;
+  line-height: 18px;
+  text-align: center;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: opacity 0.1s ease, background-color 0.1s ease;
+}
+
+.nevo-event-toast-close:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--nevo-text-primary, #ffffff) 14%, transparent);
+}
+
+.nevo-event-toast-close:focus-visible {
+  outline: 2px solid var(--zen-primary-color, #6b8afd);
+  outline-offset: 1px;
+  opacity: 1;
 }
 
 .nevo-event-toast-title {

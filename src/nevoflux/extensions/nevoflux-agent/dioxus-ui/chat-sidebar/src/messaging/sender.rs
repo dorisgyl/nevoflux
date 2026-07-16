@@ -1351,6 +1351,65 @@ pub async fn schedule_list() -> Result<Vec<ScheduleJobState>, String> {
         .collect())
 }
 
+/// One row of the `loop.list` snapshot (daemon-authoritative). Deserialized
+/// from the command response, then mapped to `LoopState` for `ctx.loops`.
+#[derive(serde::Deserialize)]
+struct LoopListRow {
+    loop_id: String,
+    session_id: String,
+    trigger_expr: String,
+    #[serde(default)]
+    prompt_text: Option<String>,
+    #[serde(default)]
+    wrapped_skill: Option<String>,
+    state: String,
+    #[serde(default)]
+    iteration_count: i64,
+    #[serde(default)]
+    skipped_triggers: i64,
+    #[serde(default)]
+    scratchpad_preview: String,
+    #[serde(default)]
+    scratchpad_bytes: i64,
+}
+
+/// `loop.list` — authoritative snapshot of a session's loops from the daemon DB.
+///
+/// The Loop Jobs panel calls this on open (mirrors `schedule_list()` in the
+/// Schedule panel). It does NOT depend on `system:loop:*` events, so it fills a
+/// freshly-loaded maximized panel — and surfaces loops driven by a bus-less
+/// LoopManager that emit no events at all — which pure event-driven `ctx.loops`
+/// never could. `iterations`/`pending_proposal` come from live events only.
+pub async fn loop_list(session_id: &str) -> Result<Vec<crate::state::LoopState>, String> {
+    let data = system_command(
+        "loop.list",
+        serde_json::json!({ "session_id": session_id }),
+    )
+    .await?;
+    let arr = data
+        .get("loops")
+        .and_then(|s| s.as_array())
+        .cloned()
+        .unwrap_or_default();
+    Ok(arr
+        .into_iter()
+        .filter_map(|v| serde_json::from_value::<LoopListRow>(v).ok())
+        .map(|r| crate::state::LoopState {
+            loop_id: r.loop_id,
+            session_id: r.session_id,
+            trigger_expr: r.trigger_expr,
+            prompt_text: r.prompt_text,
+            wrapped_skill: r.wrapped_skill,
+            state: r.state,
+            iteration_count: r.iteration_count,
+            skipped_triggers: r.skipped_triggers,
+            scratchpad_preview: r.scratchpad_preview,
+            scratchpad_bytes: r.scratchpad_bytes,
+            ..Default::default()
+        })
+        .collect())
+}
+
 /// `schedule.runs` — recent run history for one schedule.
 /// Returns the raw run objects (`run_id, started_at, ended_at, status,
 /// fire_kind, error, tokens_used, goal_turns`) for lazy rendering.

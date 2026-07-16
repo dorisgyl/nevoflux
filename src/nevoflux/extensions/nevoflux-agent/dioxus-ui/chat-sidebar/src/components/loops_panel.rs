@@ -35,6 +35,44 @@ fn is_terminal(state: &str) -> bool {
 pub fn LoopsPanel() -> Element {
     let ctx = use_app_context();
 
+    // Backfill the authoritative loop snapshot whenever the panel becomes
+    // visible. `ctx.loops` is otherwise populated only by live `system:loop:*`
+    // events — which a freshly-loaded maximized panel never received, and which
+    // a bus-less LoopManager never publishes at all — so without this the panel
+    // renders empty even while loops are running. Mirrors `jobs_panel`'s
+    // `schedule_list()`-on-open. Merge (don't clobber) so live iteration/proposal
+    // state already in the map survives.
+    use_effect(move || {
+        if *ctx.show_loops_panel.read() {
+            let session_id = ctx.session.read().id.clone();
+            spawn_local(async move {
+                // AppContext is Copy; rebind mutably so `ctx.loops.write()` is
+                // allowed (mirrors `apply_loop_event`'s `mut ctx`).
+                let mut ctx = ctx;
+                match crate::messaging::loop_list(&session_id).await {
+                    Ok(loops) => {
+                        let mut map = ctx.loops.write();
+                        for l in loops {
+                            map.entry(l.loop_id.clone())
+                                .and_modify(|e| {
+                                    e.state = l.state.clone();
+                                    e.trigger_expr = l.trigger_expr.clone();
+                                    e.prompt_text = l.prompt_text.clone();
+                                    e.wrapped_skill = l.wrapped_skill.clone();
+                                    e.iteration_count = l.iteration_count;
+                                    e.skipped_triggers = l.skipped_triggers;
+                                    e.scratchpad_preview = l.scratchpad_preview.clone();
+                                    e.scratchpad_bytes = l.scratchpad_bytes;
+                                })
+                                .or_insert(l);
+                        }
+                    }
+                    Err(e) => tracing::warn!("loop.list on open failed: {}", e),
+                }
+            });
+        }
+    });
+
     if !*ctx.show_loops_panel.read() {
         return rsx! {};
     }
