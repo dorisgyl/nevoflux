@@ -92,6 +92,11 @@ pub async fn send_to_agent(message: ChatMessage) -> Result<(), String> {
 }
 
 /// Send chat message to agent
+///
+/// `soul_mention` says what the user's `@` asked for: `None` when they said
+/// nothing, `Some(SoulMention::soul(..))` when they picked one, and
+/// `Some(SoulMention::clear())` when they asked to go back to this Space's own.
+#[allow(clippy::too_many_arguments)]
 pub async fn send_chat_message(
     session_id: &str,
     content: String,
@@ -100,6 +105,7 @@ pub async fn send_chat_message(
     local_files: Vec<FileInfo>,
     tab_id: Option<u32>,
     tab_ids: Vec<TabReference>,
+    soul_mention: Option<shared_protocol::SoulMention>,
 ) -> Result<(), String> {
     let message = ChatMessage::ChatMessage(ChatMessagePayload {
         session_id: session_id.to_string(),
@@ -110,6 +116,7 @@ pub async fn send_chat_message(
         local_files,
         tab_id: tab_id.map(|id| id as i64),
         tab_ids,
+        soul_mention,
     });
 
     send_to_agent(message).await
@@ -767,6 +774,10 @@ pub struct TabContextPayload {
     pub title: String,
     #[serde(default)]
     pub favicon_url: Option<String>,
+    /// The tab's cookieStoreId. Absent only when talking to a background script
+    /// older than this field.
+    #[serde(default)]
+    pub cookie_store_id: Option<String>,
 }
 
 /// Send internal message to background
@@ -825,7 +836,10 @@ pub async fn build_current_tab_ids() -> (Option<u32>, Vec<shared_protocol::TabRe
     match request_tab_context().await {
         Ok(Some(tc)) => {
             let tab_ids = vec![shared_protocol::TabReference {
-                space: String::new(),
+                space: tc
+                    .cookie_store_id
+                    .clone()
+                    .unwrap_or_else(|| shared_protocol::DEFAULT_COOKIE_STORE_ID.to_string()),
                 tab_id: tc.tab_id as i64,
                 tab_title: tc.title,
                 url: tc.url,
@@ -1699,4 +1713,53 @@ pub async fn sleep_ms(ms: u32) {
             .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, ms as i32);
     });
     let _ = JsFuture::from(promise).await;
+}
+
+// ============================================
+// Space Souls
+// ============================================
+
+/// Ask the daemon which souls exist.
+///
+/// The reply arrives as a `system_response` and lands in `ctx.souls`.
+pub async fn send_soul_list() -> Result<(), String> {
+    let message = ChatMessage::SystemCommand(SystemCommandPayload {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        command: "soul.list".to_string(),
+        params: None,
+    });
+    send_to_agent(message).await
+}
+
+/// Ask the daemon which soul is bound to which container.
+pub async fn send_soul_bindings() -> Result<(), String> {
+    let message = ChatMessage::SystemCommand(SystemCommandPayload {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        command: "soul.bindings".to_string(),
+        params: None,
+    });
+    send_to_agent(message).await
+}
+
+/// Give a container a soul. The reply carries the full bindings map.
+pub async fn send_soul_bind(container: &str, slug: &str) -> Result<(), String> {
+    let message = ChatMessage::SystemCommand(SystemCommandPayload {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        command: "soul.bind".to_string(),
+        params: Some(serde_json::json!({
+            "container": container,
+            "slug": slug,
+        })),
+    });
+    send_to_agent(message).await
+}
+
+/// Take a container's soul away. The reply carries the full bindings map.
+pub async fn send_soul_unbind(container: &str) -> Result<(), String> {
+    let message = ChatMessage::SystemCommand(SystemCommandPayload {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        command: "soul.unbind".to_string(),
+        params: Some(serde_json::json!({ "container": container })),
+    });
+    send_to_agent(message).await
 }

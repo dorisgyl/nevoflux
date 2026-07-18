@@ -5,6 +5,7 @@
 //! Application state types for the Chat Sidebar
 
 mod session;
+pub mod soul;
 mod message;
 mod agent;
 pub mod permission;
@@ -53,3 +54,5 @@ pub struct MaximizeState {
     /// panel). Set by the header calendar button's maximize-jump.
     pub panel: Option<String>,
 }
+
+pub use soul::{ActiveSoul, SoulSummary};

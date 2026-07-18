@@ -41,7 +41,7 @@ pub fn ErrorCard(code: String, message: String, recoverable: bool) -> Element {
                     crate::mock::mock_send_message(ctx, text).await;
                 } else {
                     let (tab_id, tab_ids) = crate::messaging::build_current_tab_ids().await;
-                    let _ = crate::messaging::send_chat_message(&session_id, text, ctx.chat_mode.read().clone(), vec![], vec![], tab_id, tab_ids).await;
+                    let _ = crate::messaging::send_chat_message(&session_id, text, ctx.chat_mode.read().clone(), vec![], vec![], tab_id, tab_ids, None).await;
                 }
             });
         }

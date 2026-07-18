@@ -376,4 +376,9 @@ pub struct TabContext {
     pub title: String,
     /// Favicon URL
     pub favicon_url: Option<String>,
+    /// The tab's container (cookieStoreId). Which soul answers is keyed on this.
+    ///
+    /// Empty when talking to a background script older than this field; treat
+    /// that as "no container" rather than as a container of its own.
+    pub cookie_store_id: String,
 }

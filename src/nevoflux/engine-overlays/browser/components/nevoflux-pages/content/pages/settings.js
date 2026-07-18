@@ -89,6 +89,7 @@ const Settings = {
     this._renderSections();
     this._activateSection(this._currentSection);
     this._loadSettings();
+    this._loadSouls();
   },
 
   // ── Navigation ──────────────────────────────────────────
@@ -126,6 +127,7 @@ const Settings = {
 
     container.appendChild(this._renderGeneralSection());
     container.appendChild(this._renderLLMSection());
+    container.appendChild(this._renderSoulsSection());
     container.appendChild(this._renderMcpSection());
     container.appendChild(this._renderCanvasToolsSection());
     container.appendChild(this._renderMyCanvasSection());
@@ -872,6 +874,818 @@ const Settings = {
   },
 
   // ── MCP Servers Section ────────────────────────────────
+
+  // ── Space Souls ─────────────────────────────────────────
+  //
+  // Users think in Spaces; the daemon only ever sees a container. The table is
+  // therefore keyed by container, with the Spaces that use it named on the row —
+  // including when several share one, which is legal and means they share the
+  // assistant and its memory too.
+
+  _renderSoulsSection() {
+    const section = this._createSection('space-souls', 'Space Souls');
+    const group = this._createGroup('Space Souls');
+
+    const desc = document.createElement('p');
+    desc.className = 'section-desc';
+    desc.textContent =
+      "Give each Space its own assistant. A soul is bound to the Space's container — " +
+      'it brings its own personality, tools and private memory, and never crosses ' +
+      'into another container.';
+    group.appendChild(desc);
+
+    const list = document.createElement('ul');
+    list.className = 'binding-list';
+    list.id = 'soul-binding-list';
+    group.appendChild(list);
+
+    section.appendChild(group);
+
+    const libGroup = this._createGroup('Souls library');
+
+    const newBtn = document.createElement('button');
+    newBtn.className = 'new-soul-btn';
+    newBtn.textContent = '＋ New soul';
+    newBtn.addEventListener('click', () => this._openSoulEditor(null));
+    libGroup.appendChild(newBtn);
+
+    const libList = document.createElement('ul');
+    libList.className = 'soul-lib-list';
+    libList.id = 'soul-lib-list';
+    libGroup.appendChild(libList);
+
+    const hint = document.createElement('div');
+    hint.className = 'folder-hint';
+    hint.innerHTML =
+      'Souls are folders in <code>~/.config/nevoflux/agents/</code> — each needs an ' +
+      '<code>IDENTITY.md</code> (name and avatar) and a <code>SOUL.md</code> (personality). ' +
+      'Edits reload automatically.';
+    libGroup.appendChild(hint);
+
+    section.appendChild(libGroup);
+    section.appendChild(this._renderSoulEditor());
+    return section;
+  },
+
+  // Load souls, bindings and Spaces, then draw the table.
+  async _loadSouls() {
+    try {
+      const [soulsData, bindingsData] = await Promise.all([
+        this._sendAgentCommand('soul.list'),
+        this._sendAgentCommand('soul.bindings'),
+      ]);
+      this._souls = soulsData?.souls || [];
+      this._soulBindings = bindingsData?.bindings || {};
+    } catch (e) {
+      console.error('[NevoFlux] Could not load souls:', e);
+      this._souls = [];
+      this._soulBindings = {};
+    }
+
+    // Spaces come from chrome, not the daemon: it never learns their names.
+    try {
+      this._spaces = (await browser.nevoflux.getSpaces()) || [];
+    } catch (e) {
+      console.warn('[NevoFlux] Could not list Spaces; showing containers only:', e);
+      this._spaces = [];
+    }
+
+    this._renderSoulBindings();
+    this._renderSoulLibrary();
+  },
+
+  // One row per container, because that is what a binding keys on.
+  //
+  // Rows come from three places: the Spaces that exist, the container-less
+  // default (always last), and any binding left pointing at a container no Space
+  // uses any more — which would otherwise be invisible and unremovable.
+  _soulBindingRows() {
+    const byContainer = new Map();
+
+    for (const space of this._spaces || []) {
+      const id = space.cookieStoreId;
+      if (!byContainer.has(id)) {
+        byContainer.set(id, { cookieStoreId: id, spaces: [], stale: false });
+      }
+      byContainer.get(id).spaces.push(space.name || 'Untitled');
+    }
+
+    for (const container of Object.keys(this._soulBindings || {})) {
+      if (!byContainer.has(container)) {
+        byContainer.set(container, { cookieStoreId: container, spaces: [], stale: true });
+      }
+    }
+
+    if (!byContainer.has('firefox-default')) {
+      byContainer.set('firefox-default', {
+        cookieStoreId: 'firefox-default',
+        spaces: [],
+        stale: false,
+      });
+    }
+
+    const rows = [...byContainer.values()];
+    // Container-less last: it is the fallback, not a Space.
+    rows.sort((a, b) => {
+      if (a.cookieStoreId === 'firefox-default') return 1;
+      if (b.cookieStoreId === 'firefox-default') return -1;
+      return (a.spaces[0] || '').localeCompare(b.spaces[0] || '');
+    });
+    return rows;
+  },
+
+  _renderSoulBindings() {
+    const list = document.getElementById('soul-binding-list');
+    if (!list) return;
+    list.innerHTML = '';
+
+    for (const row of this._soulBindingRows()) {
+      list.appendChild(this._renderSoulBindingRow(row));
+    }
+  },
+
+  _renderSoulBindingRow(row) {
+    const li = document.createElement('li');
+    li.className = 'binding-row';
+
+    const slug = this._soulBindings?.[row.cookieStoreId];
+    const soul = (this._souls || []).find((s) => s.slug === slug);
+    const isDefault = row.cookieStoreId === 'firefox-default';
+
+    if (!soul) li.classList.add('unbound');
+    if (row.stale) li.classList.add('stale');
+    if (isDefault) li.classList.add('default-row');
+
+    // The face: this is what the floating avatar will look like here.
+    const glyph = document.createElement('div');
+    glyph.className = 'binding-glyph';
+    if (soul?.avatar) {
+      const img = document.createElement('img');
+      img.src = soul.avatar;
+      img.alt = '';
+      glyph.appendChild(img);
+    } else {
+      const empty = document.createElement('span');
+      empty.className = 'glyph-empty';
+      glyph.appendChild(empty);
+    }
+    li.appendChild(glyph);
+
+    const info = document.createElement('div');
+    info.className = 'binding-info';
+
+    const spaces = document.createElement('div');
+    spaces.className = 'binding-spaces';
+    if (row.stale) {
+      spaces.textContent = 'No Space uses this container';
+    } else if (isDefault) {
+      spaces.textContent = 'No container';
+    } else {
+      spaces.textContent = row.spaces.join(' · ');
+      if (row.spaces.length > 1) {
+        const badge = document.createElement('span');
+        badge.className = 'badge-shared';
+        badge.textContent = 'shared container';
+        badge.title =
+          'These Spaces share one container, so they share the same soul and memory.';
+        spaces.appendChild(document.createTextNode(' '));
+        spaces.appendChild(badge);
+      }
+    }
+    info.appendChild(spaces);
+
+    if (isDefault) {
+      const note = document.createElement('div');
+      note.className = 'row-note';
+      note.textContent =
+        'Tabs outside any container always use the default assistant. To give a Space ' +
+        'its own soul, assign it a container first (Space settings → Set Profile).';
+      info.appendChild(note);
+    } else {
+      const container = document.createElement('div');
+      container.className = 'binding-container';
+      const code = document.createElement('code');
+      code.textContent = row.cookieStoreId;
+      container.appendChild(code);
+      if (row.stale && slug) {
+        container.appendChild(document.createTextNode(` — still bound to ${slug}`));
+      }
+      info.appendChild(container);
+    }
+    li.appendChild(info);
+
+    const actions = document.createElement('div');
+    actions.className = 'binding-actions';
+
+    if (row.stale) {
+      const remove = document.createElement('button');
+      remove.className = 'stale-remove';
+      remove.textContent = 'Remove binding';
+      remove.addEventListener('click', () => this._unbindSoul(row.cookieStoreId));
+      actions.appendChild(remove);
+    } else {
+      const picker = document.createElement('select');
+      picker.className = 'soul-picker';
+      picker.disabled = isDefault;
+
+      const none = document.createElement('option');
+      none.value = '';
+      none.textContent = 'Default assistant';
+      picker.appendChild(none);
+
+      for (const s of this._souls || []) {
+        const opt = document.createElement('option');
+        opt.value = s.slug;
+        opt.textContent = s.name;
+        if (s.slug === slug) opt.selected = true;
+        picker.appendChild(opt);
+      }
+
+      picker.addEventListener('change', () => {
+        if (picker.value) {
+          this._bindSoul(row.cookieStoreId, picker.value);
+        } else {
+          this._unbindSoul(row.cookieStoreId);
+        }
+      });
+      actions.appendChild(picker);
+    }
+
+    li.appendChild(actions);
+    return li;
+  },
+
+  _renderSoulLibrary() {
+    const list = document.getElementById('soul-lib-list');
+    if (!list) return;
+    list.innerHTML = '';
+
+    if (!(this._souls || []).length) {
+      const empty = document.createElement('li');
+      empty.className = 'soul-lib-empty';
+      empty.textContent =
+        'No souls yet. Create a folder under agents/ with an IDENTITY.md and a SOUL.md.';
+      list.appendChild(empty);
+      return;
+    }
+
+    // Reverse map so each soul says where it is used, not just that it exists.
+    const usedBy = new Map();
+    for (const [container, slug] of Object.entries(this._soulBindings || {})) {
+      const space = (this._spaces || []).find((sp) => sp.cookieStoreId === container);
+      if (space) usedBy.set(slug, space.name || 'Untitled');
+    }
+
+    for (const soul of this._souls) {
+      const li = document.createElement('li');
+      li.className = 'soul-lib-row';
+      li.setAttribute('role', 'button');
+      li.tabIndex = 0;
+      li.addEventListener('click', () => this._openSoulEditor(soul.slug));
+      li.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          this._openSoulEditor(soul.slug);
+        }
+      });
+
+      if (soul.avatar) {
+        const img = document.createElement('img');
+        img.src = soul.avatar;
+        img.alt = '';
+        li.appendChild(img);
+      }
+
+      const body = document.createElement('div');
+      body.className = 'soul-lib-body';
+
+      const name = document.createElement('div');
+      name.className = 'soul-lib-name';
+      name.textContent = soul.name;
+      const code = document.createElement('code');
+      code.textContent = `agents/${soul.slug}/`;
+      name.appendChild(code);
+      body.appendChild(name);
+
+      if (soul.description) {
+        const d = document.createElement('div');
+        d.className = 'soul-lib-desc';
+        d.textContent = soul.description;
+        body.appendChild(d);
+      }
+      li.appendChild(body);
+
+      const usage = document.createElement('div');
+      usage.className = 'soul-lib-usage';
+      usage.textContent = usedBy.has(soul.slug) ? `Bound to ${usedBy.get(soul.slug)}` : 'Not bound';
+      li.appendChild(usage);
+
+      list.appendChild(li);
+    }
+  },
+
+  async _bindSoul(container, slug) {
+    try {
+      const data = await this._sendAgentCommand('soul.bind', { container, slug });
+      this._soulBindings = data?.bindings || this._soulBindings;
+      this._renderSoulBindings();
+      this._renderSoulLibrary();
+      this._showSaved();
+    } catch (e) {
+      console.error('[NevoFlux] Could not bind soul:', e);
+      // Redraw from what the daemon last told us, so the picker never shows a
+      // binding that did not take.
+      this._renderSoulBindings();
+    }
+  },
+
+  async _unbindSoul(container) {
+    try {
+      const data = await this._sendAgentCommand('soul.unbind', { container });
+      this._soulBindings = data?.bindings || this._soulBindings;
+      this._renderSoulBindings();
+      this._renderSoulLibrary();
+      this._showSaved();
+    } catch (e) {
+      console.error('[NevoFlux] Could not remove binding:', e);
+      this._renderSoulBindings();
+    }
+  },
+
+  // ── Soul editor ─────────────────────────────────────────
+  //
+  // Machine config (name, avatar, the whitelists) is edited as form fields and
+  // serialized by the daemon: a frontmatter typo makes a soul vanish from the
+  // list, so nobody should have to hand-write YAML to rename their assistant.
+  // The four bodies stay plain text, because that is what they are.
+
+  // Which body goes in which file, and what to say about it. `optional` files
+  // fall back to the user's global section when left empty — that is usually what
+  // you want, so the placeholder says so.
+  _soulFields: [
+    {
+      key: 'soul',
+      file: 'SOUL.md',
+      title: 'Personality',
+      hint: "How this assistant thinks and speaks. Replaces the global personality while this soul is active.",
+      rows: 9,
+      optional: false,
+    },
+    {
+      key: 'identity',
+      file: 'IDENTITY.md',
+      title: 'Identity notes',
+      hint: 'A short self-description, injected as the identity section.',
+      rows: 3,
+      optional: false,
+    },
+    {
+      key: 'tools',
+      file: 'TOOLS.md',
+      title: 'Tool guidance',
+      hint: 'Leave empty to keep the global tool guidance.',
+      rows: 4,
+      optional: true,
+    },
+    {
+      key: 'agents',
+      file: 'AGENTS.md',
+      title: 'Subagent guidance',
+      hint: 'Leave empty to keep the global subagent guidance.',
+      rows: 4,
+      optional: true,
+    },
+  ],
+
+  _renderSoulEditor() {
+    const wrap = document.createElement('div');
+    wrap.className = 'soul-editor';
+    wrap.id = 'soul-editor';
+    wrap.hidden = true;
+
+    const back = document.createElement('button');
+    back.className = 'editor-back';
+    back.textContent = '← Space Souls';
+    back.addEventListener('click', () => this._closeSoulEditor());
+    wrap.appendChild(back);
+
+    // Head: avatar, name, slug, description.
+    const head = document.createElement('div');
+    head.className = 'editor-head';
+
+    const avatarBtn = document.createElement('button');
+    avatarBtn.className = 'avatar-edit';
+    avatarBtn.id = 'soul-avatar-btn';
+    avatarBtn.title = 'Change avatar — saved as avatar.png in the soul folder';
+    const avatarImg = document.createElement('img');
+    avatarImg.id = 'soul-avatar-img';
+    avatarImg.alt = '';
+    avatarBtn.appendChild(avatarImg);
+    const badge = document.createElement('span');
+    badge.className = 'avatar-badge';
+    badge.setAttribute('aria-hidden', 'true');
+    badge.textContent = '✎';
+    avatarBtn.appendChild(badge);
+    head.appendChild(avatarBtn);
+
+    const file = document.createElement('input');
+    file.type = 'file';
+    file.accept = 'image/png,image/jpeg';
+    file.hidden = true;
+    file.id = 'soul-avatar-file';
+    head.appendChild(file);
+    avatarBtn.addEventListener('click', () => file.click());
+    file.addEventListener('change', () => this._pickSoulAvatar(file));
+
+    const fields = document.createElement('div');
+    fields.className = 'editor-title-fields';
+
+    const nameRow = document.createElement('div');
+    nameRow.className = 'editor-name-row';
+    const name = document.createElement('input');
+    name.className = 'ed-name';
+    name.id = 'soul-name';
+    name.setAttribute('aria-label', 'Soul name');
+    nameRow.appendChild(name);
+    const slug = document.createElement('span');
+    slug.className = 'ed-slug';
+    slug.id = 'soul-slug';
+    nameRow.appendChild(slug);
+    fields.appendChild(nameRow);
+
+    const desc = document.createElement('input');
+    desc.className = 'ed-desc';
+    desc.id = 'soul-description';
+    desc.setAttribute('aria-label', 'Description');
+    desc.placeholder = 'One line about what this assistant is for';
+    fields.appendChild(desc);
+    head.appendChild(fields);
+
+    const state = document.createElement('span');
+    state.className = 'save-state';
+    state.id = 'soul-save-state';
+    head.appendChild(state);
+
+    wrap.appendChild(head);
+
+    // A name that clashes or cannot be mentioned is refused by the daemon; say so
+    // here rather than letting Save look like it worked.
+    const error = document.createElement('div');
+    error.className = 'editor-error';
+    error.id = 'soul-editor-error';
+    error.hidden = true;
+    wrap.appendChild(error);
+
+    for (const field of this._soulFields) {
+      wrap.appendChild(this._renderSoulField(field));
+    }
+
+    wrap.appendChild(this._renderSoulAdvanced());
+
+    const actions = document.createElement('div');
+    actions.className = 'editor-actions';
+    const save = document.createElement('button');
+    save.className = 'editor-save';
+    save.textContent = 'Save';
+    save.addEventListener('click', () => this._saveSoul());
+    actions.appendChild(save);
+    wrap.appendChild(actions);
+
+    const danger = document.createElement('div');
+    danger.className = 'danger-zone';
+    danger.id = 'soul-danger';
+    const dangerText = document.createElement('span');
+    dangerText.id = 'soul-danger-text';
+    danger.appendChild(dangerText);
+    const del = document.createElement('button');
+    del.textContent = 'Delete soul';
+    del.addEventListener('click', () => this._deleteSoul());
+    danger.appendChild(del);
+    wrap.appendChild(danger);
+
+    return wrap;
+  },
+
+  _renderSoulField(field) {
+    const group = document.createElement('div');
+    group.className = 'settings-group editor-group';
+
+    const head = document.createElement('div');
+    head.className = 'group-head';
+
+    const h2 = document.createElement('h2');
+    h2.textContent = field.title;
+    const code = document.createElement('code');
+    code.textContent = field.file;
+    h2.appendChild(code);
+    if (field.optional) {
+      const tag = document.createElement('span');
+      tag.className = 'opt-tag';
+      tag.textContent = 'optional';
+      h2.appendChild(tag);
+    }
+    head.appendChild(h2);
+
+    const draftWrap = document.createElement('span');
+    draftWrap.id = `soul-draft-wrap-${field.key}`;
+    const draft = document.createElement('button');
+    draft.className = 'draft-btn';
+    draft.textContent = '✨ Draft';
+    draft.addEventListener('click', () => this._draftSoulField(field.key));
+    draftWrap.appendChild(draft);
+    head.appendChild(draftWrap);
+
+    group.appendChild(head);
+
+    const hint = document.createElement('p');
+    hint.className = 'field-hint';
+    hint.textContent = field.hint;
+    group.appendChild(hint);
+
+    const area = document.createElement('textarea');
+    area.className = 'ed-textarea';
+    area.id = `soul-field-${field.key}`;
+    area.rows = field.rows;
+    if (field.optional) {
+      area.placeholder = `Empty — the global ${field.file.replace('.md', '')} section applies.`;
+    }
+    group.appendChild(area);
+
+    return group;
+  },
+
+  _renderSoulAdvanced() {
+    const details = document.createElement('details');
+    details.className = 'adv-details';
+
+    const summary = document.createElement('summary');
+    summary.textContent = 'Advanced — capabilities';
+    details.appendChild(summary);
+
+    const grid = document.createElement('div');
+    grid.className = 'adv-grid';
+
+    for (const adv of [
+      {
+        key: 'allowed_tools',
+        label: 'Allowed tools',
+        placeholder: 'web_search\nbrain_*',
+        hint: 'One per line, patterns allowed. Tools not listed are unavailable to this soul. Empty = all tools of the current mode.',
+      },
+      {
+        key: 'subagents',
+        label: 'Delegates',
+        placeholder: 'researcher\nreader',
+        hint: 'Souls this one may hand work to, by folder name. Empty = any.',
+      },
+    ]) {
+      const field = document.createElement('div');
+      field.className = 'adv-field';
+
+      const label = document.createElement('label');
+      label.setAttribute('for', `soul-adv-${adv.key}`);
+      label.textContent = adv.label;
+      field.appendChild(label);
+
+      const area = document.createElement('textarea');
+      area.className = 'ed-textarea';
+      area.id = `soul-adv-${adv.key}`;
+      area.placeholder = adv.placeholder;
+      field.appendChild(area);
+
+      const hint = document.createElement('p');
+      hint.className = 'field-hint';
+      hint.textContent = adv.hint;
+      field.appendChild(hint);
+
+      grid.appendChild(field);
+    }
+
+    details.appendChild(grid);
+    return details;
+  },
+
+  /// Open a soul for editing, or start a new one when `slug` is null.
+  async _openSoulEditor(slug) {
+    const editor = document.getElementById('soul-editor');
+    if (!editor) return;
+
+    this._editingSlug = slug;
+    this._soulEditorDraft = null;
+    this._showSoulEditorError(null);
+
+    let soul = {
+      name: '',
+      description: '',
+      avatar: null,
+      identity: '',
+      soul: '',
+      tools: '',
+      agents: '',
+      allowed_tools: [],
+      subagents: [],
+    };
+
+    if (slug) {
+      try {
+        soul = { ...soul, ...(await this._sendAgentCommand('soul.read', { slug })) };
+      } catch (e) {
+        console.error('[NevoFlux] Could not read soul:', e);
+        this._showSoulEditorError('That soul could not be opened.');
+      }
+    }
+
+    document.getElementById('soul-name').value = soul.name || '';
+    document.getElementById('soul-description').value = soul.description || '';
+    document.getElementById('soul-slug').textContent = slug ? `agents/${slug}/` : 'agents/…/';
+
+    const img = document.getElementById('soul-avatar-img');
+    img.src = soul.avatar || '';
+    img.hidden = !soul.avatar;
+
+    for (const field of this._soulFields) {
+      document.getElementById(`soul-field-${field.key}`).value = soul[field.key] || '';
+    }
+    document.getElementById('soul-adv-allowed_tools').value = (soul.allowed_tools || []).join('\n');
+    document.getElementById('soul-adv-subagents').value = (soul.subagents || []).join('\n');
+
+    // A soul that does not exist yet has nothing to delete, and no avatar to set:
+    // both need a folder first.
+    document.getElementById('soul-danger').hidden = !slug;
+    document.getElementById('soul-avatar-btn').disabled = !slug;
+    if (slug) {
+      document.getElementById('soul-danger-text').textContent =
+        `Deletes agents/${slug}/ and removes its bindings. Chats it wrote keep their labels.`;
+    }
+    document.getElementById('soul-save-state').textContent = slug ? 'Saved' : '';
+
+    for (const section of document.querySelectorAll('#section-space-souls .settings-group')) {
+      section.hidden = true;
+    }
+    editor.hidden = false;
+    document.getElementById(slug ? 'soul-name' : 'soul-name').focus();
+  },
+
+  _closeSoulEditor() {
+    const editor = document.getElementById('soul-editor');
+    if (editor) editor.hidden = true;
+    for (const section of document.querySelectorAll('#section-space-souls .settings-group')) {
+      section.hidden = false;
+    }
+    this._editingSlug = null;
+    this._loadSouls();
+  },
+
+  _showSoulEditorError(message) {
+    const error = document.getElementById('soul-editor-error');
+    if (!error) return;
+    error.textContent = message || '';
+    error.hidden = !message;
+  },
+
+  _soulEditorFields() {
+    const fields = {
+      name: document.getElementById('soul-name').value,
+      description: document.getElementById('soul-description').value,
+      allowed_tools: document.getElementById('soul-adv-allowed_tools').value,
+      subagents: document.getElementById('soul-adv-subagents').value,
+    };
+    for (const field of this._soulFields) {
+      fields[field.key] = document.getElementById(`soul-field-${field.key}`).value;
+    }
+    return fields;
+  },
+
+  async _saveSoul() {
+    const fields = this._soulEditorFields();
+    this._showSoulEditorError(null);
+
+    // A new soul needs a folder before it can be written to.
+    let slug = this._editingSlug;
+    if (!slug) {
+      try {
+        const created = await this._sendAgentCommand('soul.create', { name: fields.name });
+        slug = created.slug;
+        this._editingSlug = slug;
+        document.getElementById('soul-slug').textContent = `agents/${slug}/`;
+        document.getElementById('soul-danger').hidden = false;
+        document.getElementById('soul-avatar-btn').disabled = false;
+        document.getElementById('soul-danger-text').textContent =
+          `Deletes agents/${slug}/ and removes its bindings. Chats it wrote keep their labels.`;
+      } catch (e) {
+        this._showSoulEditorError(e?.message || 'That soul could not be created.');
+        return;
+      }
+    }
+
+    try {
+      await this._sendAgentCommand('soul.write', { slug, ...fields });
+      document.getElementById('soul-save-state').textContent = 'Saved';
+      this._showSaved();
+    } catch (e) {
+      // The daemon refuses a clashing or unmentionable name; say which, rather
+      // than leaving Save looking like it worked.
+      this._showSoulEditorError(e?.message || 'That soul could not be saved.');
+    }
+  },
+
+  async _deleteSoul() {
+    if (!this._editingSlug) return;
+    try {
+      await this._sendAgentCommand('soul.delete', { slug: this._editingSlug });
+      this._closeSoulEditor();
+    } catch (e) {
+      this._showSoulEditorError(e?.message || 'That soul could not be deleted.');
+    }
+  },
+
+  async _pickSoulAvatar(input) {
+    const file = input.files?.[0];
+    if (!file || !this._editingSlug) return;
+
+    try {
+      const dataUri = await this._readSoulAvatar(file);
+      const result = await this._sendAgentCommand('soul.set_avatar', {
+        slug: this._editingSlug,
+        data_uri: dataUri,
+      });
+      const img = document.getElementById('soul-avatar-img');
+      img.src = result?.avatar || dataUri;
+      img.hidden = false;
+      this._showSaved();
+    } catch (e) {
+      this._showSoulEditorError(e?.message || 'That image could not be used.');
+    } finally {
+      input.value = '';
+    }
+  },
+
+  /// Scale an image down before sending it, so a soul's folder never holds a 4MB
+  /// avatar for a 40px chip.
+  _readSoulAvatar(file) {
+    const MAX = 256;
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('That image could not be read.'));
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('That image could not be read.'));
+        img.onload = () => {
+          const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/png'));
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  },
+
+  /// Ask the model for a first draft of one field.
+  ///
+  /// The draft lands in the textarea, not on disk: saving is still the user's
+  /// move, and Undo puts back what was there.
+  async _draftSoulField(key) {
+    const wrap = document.getElementById(`soul-draft-wrap-${key}`);
+    const button = wrap?.querySelector('.draft-btn');
+    const area = document.getElementById(`soul-field-${key}`);
+    if (!button || !area) return;
+
+    button.disabled = true;
+    button.textContent = 'Drafting…';
+    this._showSoulEditorError(null);
+
+    try {
+      const result = await this._sendAgentCommand('soul.generate', {
+        target: key,
+        slug: this._editingSlug || undefined,
+        ...this._soulEditorFields(),
+      });
+
+      const previous = area.value;
+      area.value = result.content;
+
+      wrap.querySelector('.undo-chip')?.remove();
+      const undo = document.createElement('button');
+      undo.className = 'undo-chip';
+      undo.textContent = '↩ Undo';
+      undo.addEventListener('click', () => {
+        area.value = previous;
+        undo.remove();
+      });
+      wrap.appendChild(undo);
+      // Once they start editing, the draft is theirs and Undo is noise.
+      area.addEventListener('input', () => undo.remove(), { once: true });
+    } catch (e) {
+      this._showSoulEditorError(e?.message || 'The model could not write a draft.');
+    } finally {
+      button.disabled = false;
+      button.textContent = '✨ Draft';
+    }
+  },
 
   _renderMcpSection() {
     const section = this._createSection('mcp', 'MCP Servers');

@@ -355,7 +355,7 @@ fn EditMessageForm(
             } else {
                 ctx.agent_status.write().set_thinking();
                 let (tab_id, tab_ids) = crate::messaging::build_current_tab_ids().await;
-                let _ = crate::messaging::send_chat_message(&session_id, text, ctx.chat_mode.read().clone(), vec![], vec![], tab_id, tab_ids).await;
+                let _ = crate::messaging::send_chat_message(&session_id, text, ctx.chat_mode.read().clone(), vec![], vec![], tab_id, tab_ids, None).await;
             }
         });
     };

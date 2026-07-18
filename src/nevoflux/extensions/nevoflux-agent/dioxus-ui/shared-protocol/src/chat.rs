@@ -28,10 +28,19 @@ pub enum ChatMode {
     Agent,
 }
 
-/// Tab reference with space, id, title and url (for @ mention context)
+/// The cookieStoreId of a tab that belongs to no container.
+///
+/// Firefox reports this for ordinary tabs, and it is the single canonical value
+/// for "no container" on the wire: never an empty string, never `"default"`.
+pub const DEFAULT_COOKIE_STORE_ID: &str = "firefox-default";
+
+/// Tab reference with space, id, title and url (for tab mention context)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TabReference {
-    /// The space/workspace the tab belongs to
+    /// The tab's cookieStoreId (`firefox-default` or `firefox-container-N`).
+    ///
+    /// Named `space` because Zen derives a Space's identity from its container.
+    /// Tabs outside any container carry [`DEFAULT_COOKIE_STORE_ID`].
     pub space: String,
     /// Tab id
     pub tab_id: i64,
@@ -43,7 +52,7 @@ pub struct TabReference {
 }
 
 /// Chat message from user
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ChatMessagePayload {
     pub session_id: String,
     pub message_id: String,
@@ -61,13 +70,135 @@ pub struct ChatMessagePayload {
     /// Current active tab id
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tab_id: Option<i64>,
-    /// Selected tabs for context (user selected via @ mention)
+    /// Selected tabs for context (user selected via # mention)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tab_ids: Vec<TabReference>,
+    /// What the user's `@` said about which soul should answer.
+    ///
+    /// Absent means "the user said nothing about it" — keep whatever the session
+    /// already had. Present means they did, and [`SoulMention::slug`] carries
+    /// either the soul they picked or `None` for "go back to this Space's own".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub soul_mention: Option<SoulMention>,
+}
+
+/// The user's intent about which soul answers this turn.
+///
+/// The sidebar resolves `@name` against the soul registry and sends the slug;
+/// the daemon never scans message text for mentions, so an email address in a
+/// sentence can never switch persona.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SoulMention {
+    /// The soul to use, or `None` to drop back to this Space's own soul.
+    #[serde(default)]
+    pub slug: Option<String>,
+}
+
+impl SoulMention {
+    /// The user picked a soul.
+    pub fn soul(slug: impl Into<String>) -> Self {
+        Self {
+            slug: Some(slug.into()),
+        }
+    }
+
+    /// The user asked to go back to this Space's own soul.
+    pub fn clear() -> Self {
+        Self { slug: None }
+    }
+}
+
+/// Find the `@name` a message is addressed to, if any.
+///
+/// Only a run at the start of a line or after whitespace counts, so an email
+/// address never changes who is answering. The name is returned verbatim; it is
+/// the caller's job to look it up in the soul registry, and a name that matches
+/// nothing is simply text.
+///
+/// The first mention wins: a message that names two souls is asking the first one.
+pub fn find_mention(text: &str) -> Option<&str> {
+    let bytes = text.as_bytes();
+    let mut search_from = 0;
+
+    while let Some(offset) = text[search_from..].find('@') {
+        let at = search_from + offset;
+        let preceded_by_boundary = at == 0
+            || bytes
+                .get(at - 1)
+                .is_some_and(|b| b.is_ascii_whitespace());
+
+        if preceded_by_boundary {
+            let name = &text[at + 1..];
+            let end = name
+                .find(|c: char| !is_mention_char(c))
+                .unwrap_or(name.len());
+            if end > 0 {
+                return Some(&name[..end]);
+            }
+        }
+        search_from = at + 1;
+    }
+    None
+}
+
+/// Characters a soul name may contain in a mention.
+///
+/// Deliberately narrow: names are validated on load to be a single word, so
+/// stopping at anything else keeps `@alex,` and `@alex.` from swallowing
+/// punctuation.
+fn is_mention_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '-' || c == '_'
+}
+
+/// The partial name being typed after a trailing `@`, if the user is mid-mention.
+///
+/// Returns `Some("")` for a bare `@` (show everyone) and `Some("al")` for `@al`
+/// (narrow it down). Returns `None` once the mention is over — a space ends it,
+/// because soul names are a single word.
+///
+/// Only the run at the very end of the text counts: this drives a picker for what
+/// is being typed right now, not for an `@` from three sentences ago.
+pub fn active_mention_prefix(text: &str) -> Option<&str> {
+    let at = text.rfind('@')?;
+    let preceded_by_boundary = at == 0
+        || text[..at]
+            .chars()
+            .next_back()
+            .is_some_and(char::is_whitespace);
+    if !preceded_by_boundary {
+        return None;
+    }
+
+    let typed = &text[at + 1..];
+    typed.chars().all(is_mention_char).then_some(typed)
+}
+
+/// Whether the text ends in a bare `@` — the user asking who is available.
+///
+/// Same boundary rule as [`find_mention`]: an `@` glued to a word is part of that
+/// word, not a request for the soul picker.
+pub fn ends_with_mention_trigger(text: &str) -> bool {
+    ends_with_trigger(text, '@')
+}
+
+/// Whether the text ends in a bare `#` — the user asking for the tab picker.
+///
+/// A pasted URL fragment (`…/page#section`) does not qualify, because the `#`
+/// is not at a boundary; nor does a Markdown heading in progress (`# `), because
+/// the trigger has to be the last character.
+pub fn ends_with_tab_trigger(text: &str) -> bool {
+    ends_with_trigger(text, '#')
+}
+
+fn ends_with_trigger(text: &str, trigger: char) -> bool {
+    let Some(rest) = text.strip_suffix(trigger) else {
+        return false;
+    };
+    rest.is_empty() || rest.ends_with(char::is_whitespace)
 }
 
 /// Skill command trigger
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SkillCommandPayload {
     pub session_id: String,
     pub skill_name: String,
@@ -142,7 +273,7 @@ pub struct BrowserToolError {
 // =============================================================================
 
 /// Stream chunk for streaming responses (matches nevoflux-agent protocol)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct StreamChunkPayload {
     /// Response content
     pub content: String,
@@ -942,6 +1073,7 @@ mod tests {
             content: "Hello".to_string(),
             attachments: vec![],
             tab_id: None,
+            ..Default::default()
         });
         assert_eq!(msg.direction(), MessageDirection::ToAgent);
     }
@@ -952,6 +1084,7 @@ mod tests {
             session_id: "s1".to_string(),
             skill_name: "test".to_string(),
             args: None,
+            ..Default::default()
         });
         assert_eq!(msg.direction(), MessageDirection::ToAgent);
     }
@@ -1022,6 +1155,7 @@ mod tests {
             session_title: None,
             event: None,
             thinking_event: None,
+            ..Default::default()
         });
         assert_eq!(msg.direction(), MessageDirection::ToSidebar);
     }
@@ -1144,6 +1278,7 @@ mod tests {
             content: "Hello".to_string(),
             attachments: vec![],
             tab_id: None,
+            ..Default::default()
         });
         assert_eq!(msg.session_id(), Some("test-session"));
     }
@@ -1154,6 +1289,7 @@ mod tests {
             session_id: "test-session".to_string(),
             skill_name: "test".to_string(),
             args: None,
+            ..Default::default()
         });
         assert_eq!(msg.session_id(), Some("test-session"));
     }
@@ -1225,6 +1361,7 @@ mod tests {
             session_title: None,
             event: None,
             thinking_event: None,
+            ..Default::default()
         });
         assert_eq!(msg.session_id(), None);
     }
@@ -1350,6 +1487,7 @@ mod tests {
             content: "Hello".to_string(),
             attachments: vec![],
             tab_id: None,
+            ..Default::default()
         });
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("chat_message"));
@@ -1362,6 +1500,7 @@ mod tests {
             session_id: "session-1".to_string(),
             skill_name: "test_skill".to_string(),
             args: Some(serde_json::json!({"key": "value"})),
+            ..Default::default()
         });
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("skill_command"));
@@ -1431,6 +1570,7 @@ mod tests {
             session_title: None,
             event: None,
             thinking_event: None,
+            ..Default::default()
         });
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("stream_chunk"));
@@ -1603,6 +1743,7 @@ mod tests {
             content: "Hello".to_string(),
             attachments: vec![],
             tab_id: Some(42),
+            ..Default::default()
         });
         let json = serde_json::to_string(&original).unwrap();
         let parsed: ChatMessage = serde_json::from_str(&json).unwrap();
@@ -1625,6 +1766,7 @@ mod tests {
             session_title: None,
             event: None,
             thinking_event: None,
+            ..Default::default()
         });
         let json = serde_json::to_string(&original).unwrap();
         let parsed: ChatMessage = serde_json::from_str(&json).unwrap();
@@ -1702,5 +1844,179 @@ mod tests {
     #[test]
     fn test_default_browser_timeout() {
         assert_eq!(default_browser_timeout(), 30000);
+    }
+}
+
+#[cfg(test)]
+mod mention_tests {
+    use super::*;
+
+    // ── find_mention ───────────────────────────────────────────────────
+
+    #[test]
+    fn finds_a_mention_at_the_start_or_after_a_space() {
+        assert_eq!(find_mention("@alex what do you think?"), Some("alex"));
+        assert_eq!(find_mention("hey @alex"), Some("alex"));
+        assert_eq!(find_mention("line one\n@alex"), Some("alex"));
+    }
+
+    /// An address in a sentence is not a request to switch persona.
+    #[test]
+    fn an_email_address_is_not_a_mention() {
+        assert_eq!(find_mention("mail me at sam@example.com"), None);
+        assert_eq!(find_mention("sam@example.com"), None);
+    }
+
+    /// A message naming two souls is asking the first one.
+    #[test]
+    fn the_first_mention_wins() {
+        assert_eq!(find_mention("@alex and @nova, thoughts?"), Some("alex"));
+    }
+
+    #[test]
+    fn a_mention_stops_at_punctuation() {
+        assert_eq!(find_mention("@alex, hello"), Some("alex"));
+        assert_eq!(find_mention("@alex."), Some("alex"));
+        assert_eq!(find_mention("@alex?"), Some("alex"));
+        assert_eq!(find_mention("@my-soul_2 hi"), Some("my-soul_2"));
+    }
+
+    #[test]
+    fn a_bare_at_is_not_a_mention() {
+        assert_eq!(find_mention("@"), None);
+        assert_eq!(find_mention("what @ even is this"), None);
+    }
+
+    /// The name is returned as typed; matching it to a soul is the caller's job,
+    /// which is what makes case-insensitive lookup possible without guessing here.
+    #[test]
+    fn the_name_is_returned_verbatim() {
+        assert_eq!(find_mention("@Alex hi"), Some("Alex"));
+    }
+
+    /// An email later in the message must not hide a real mention earlier, and a
+    /// real mention later must still be found past an email.
+    #[test]
+    fn scanning_continues_past_a_non_boundary_at() {
+        assert_eq!(find_mention("mail sam@example.com then @alex"), Some("alex"));
+    }
+
+    // ── active_mention_prefix ──────────────────────────────────────────
+
+    /// A bare `@` asks who is available.
+    #[test]
+    fn a_bare_at_asks_for_everyone() {
+        assert_eq!(active_mention_prefix("@"), Some(""));
+        assert_eq!(active_mention_prefix("hey @"), Some(""));
+    }
+
+    #[test]
+    fn typing_after_an_at_narrows_the_picker() {
+        assert_eq!(active_mention_prefix("@al"), Some("al"));
+        assert_eq!(active_mention_prefix("hey @nov"), Some("nov"));
+    }
+
+    /// A space ends the mention: names are one word.
+    #[test]
+    fn a_finished_mention_closes_the_picker() {
+        assert_eq!(active_mention_prefix("@alex "), None);
+        assert_eq!(active_mention_prefix("@alex what do you think"), None);
+    }
+
+    /// Only the mention being typed right now counts.
+    #[test]
+    fn an_earlier_mention_does_not_reopen_the_picker() {
+        assert_eq!(active_mention_prefix("@alex said hi"), None);
+    }
+
+    /// An email address is not someone typing a mention.
+    #[test]
+    fn an_email_being_typed_does_not_open_the_picker() {
+        assert_eq!(active_mention_prefix("sam@"), None);
+        assert_eq!(active_mention_prefix("sam@exa"), None);
+    }
+
+    #[test]
+    fn text_with_no_at_opens_nothing() {
+        assert_eq!(active_mention_prefix("hello"), None);
+        assert_eq!(active_mention_prefix(""), None);
+    }
+
+    // ── ends_with_mention_trigger / ends_with_tab_trigger ───────────────
+
+    #[test]
+    fn a_bare_trigger_opens_the_picker() {
+        assert!(ends_with_mention_trigger("@"));
+        assert!(ends_with_mention_trigger("hello @"));
+        assert!(ends_with_tab_trigger("#"));
+        assert!(ends_with_tab_trigger("look at #"));
+    }
+
+    /// A pasted URL fragment must not open the tab picker.
+    #[test]
+    fn a_url_fragment_does_not_open_the_tab_picker() {
+        assert!(!ends_with_tab_trigger("https://example.com/page#section"));
+        assert!(
+            !ends_with_tab_trigger("https://example.com/page#"),
+            "the # here is glued to the url, not a trigger"
+        );
+    }
+
+    /// A Markdown heading in progress must not open the tab picker.
+    #[test]
+    fn a_markdown_heading_does_not_open_the_tab_picker() {
+        assert!(!ends_with_tab_trigger("# Heading"));
+        assert!(!ends_with_tab_trigger("## "));
+    }
+
+    /// A trigger glued to a word is part of that word.
+    #[test]
+    fn a_glued_trigger_is_not_a_trigger() {
+        assert!(!ends_with_mention_trigger("sam@"));
+        assert!(!ends_with_tab_trigger("C#"));
+    }
+
+    #[test]
+    fn text_without_a_trailing_trigger_opens_nothing() {
+        assert!(!ends_with_mention_trigger("@alex"));
+        assert!(!ends_with_tab_trigger("#tab"));
+        assert!(!ends_with_mention_trigger(""));
+    }
+
+    // ── SoulMention on the wire ────────────────────────────────────────
+
+    /// A client that says nothing about souls must not look like one that asked
+    /// to change them.
+    #[test]
+    fn absent_mention_is_absent_on_the_wire() {
+        let payload = ChatMessagePayload {
+            session_id: "s".into(),
+            message_id: "m".into(),
+            content: "hi".into(),
+            mode: ChatMode::Chat,
+            attachments: vec![],
+            local_files: vec![],
+            tab_id: None,
+            tab_ids: vec![],
+            soul_mention: None,
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(
+            !json.contains("soul_mention"),
+            "an absent mention must not be serialized at all"
+        );
+    }
+
+    #[test]
+    fn picking_and_clearing_are_distinguishable_on_the_wire() {
+        let pick = serde_json::to_value(SoulMention::soul("research")).unwrap();
+        assert_eq!(pick["slug"], "research");
+
+        let clear = serde_json::to_value(SoulMention::clear()).unwrap();
+        assert!(clear["slug"].is_null(), "clearing carries no soul");
+
+        let back: SoulMention = serde_json::from_value(pick).unwrap();
+        assert_eq!(back.slug.as_deref(), Some("research"));
     }
 }

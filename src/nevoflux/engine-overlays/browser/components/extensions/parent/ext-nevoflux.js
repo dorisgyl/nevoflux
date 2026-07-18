@@ -892,6 +892,33 @@ this.nevoflux = class extends ExtensionAPI {
           }
         },
 
+        async getSpaces() {
+          // Which Spaces exist, and which container each one uses. Settings needs
+          // this to show "give this Space an assistant" in the user's own terms:
+          // the daemon only ever sees a cookieStoreId.
+          //
+          // Reads the live spaces system (ZenSpaceManager, still exposed as
+          // `gZenWorkspaces`); `src/zen/workspaces/` is dead code.
+          const win = windowTracker.topWindow;
+          const spaces = win?.gZenWorkspaces?.getWorkspaces?.() ?? [];
+
+          return spaces.map(space => {
+            // containerTabId is a userContextId: 0 (or unset) means the Space
+            // uses no container, which Firefox reports on tabs as
+            // 'firefox-default'.
+            const userContextId = Number(space.containerTabId) || 0;
+            return {
+              uuid: space.uuid,
+              name: space.name ?? '',
+              containerTabId: userContextId,
+              cookieStoreId:
+                userContextId === 0
+                  ? 'firefox-default'
+                  : `firefox-container-${userContextId}`,
+            };
+          });
+        },
+
         async getTab(tabId) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
           const tab = extension.tabManager.get(resolvedTabId);

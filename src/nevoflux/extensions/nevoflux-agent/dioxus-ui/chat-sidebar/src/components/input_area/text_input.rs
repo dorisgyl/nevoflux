@@ -215,11 +215,11 @@ async fn fetch_open_tabs() -> Vec<TabItem> {
             .ok()
             .and_then(|v| v.as_string());
 
-        // Get cookieStoreId as space identifier (Zen Browser uses this for workspaces)
+        // Get cookieStoreId as space identifier (Zen derives a Space from its container)
         let space = js_sys::Reflect::get(&tab, &JsValue::from_str("cookieStoreId"))
             .ok()
             .and_then(|v| v.as_string())
-            .unwrap_or_else(|| "default".to_string());
+            .unwrap_or_else(|| shared_protocol::DEFAULT_COOKIE_STORE_ID.to_string());
 
         items.push(TabItem {
             id,
@@ -255,6 +255,9 @@ pub fn TextInput(disabled: bool) -> Element {
     let mut show_skill_selector = use_signal(|| false);
     let mut skill_filter = use_signal(String::new);
     let mut selected_skill_index = use_signal(|| 0usize);
+    let mut show_soul_selector = use_signal(|| false);
+    let mut soul_filter = use_signal(String::new);
+    let mut selected_soul_index = use_signal(|| 0usize);
 
     let has_text = !input_text.read().trim().is_empty();
     let has_files = !attached_files.read().is_empty();
@@ -314,6 +317,15 @@ pub fn TextInput(disabled: bool) -> Element {
     };
 
     // Filtered skills based on input (uses ctx.available_skills from handler)
+    // Souls whose name starts with what has been typed after `@`.
+    let filtered_souls = use_memo(move || {
+        let filter = soul_filter.read().clone();
+        crate::state::soul::filter_souls(&ctx.souls.read(), &filter)
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>()
+    });
+
     let filtered_skills = use_memo(move || {
         let filter = skill_filter.read().to_lowercase();
         let skills = ctx.available_skills.read();
@@ -526,10 +538,10 @@ pub fn TextInput(disabled: bool) -> Element {
     };
 
     let mut handle_select_tab = move |tab: TabItem| {
-        // Remove trailing @ from input
+        // Remove the trailing # that opened the selector: it was a gesture, not text.
         let current_text = input_text.read().clone();
-        if current_text.ends_with('@') {
-            input_text.set(current_text[..current_text.len() - 1].to_string());
+        if let Some(without_trigger) = current_text.strip_suffix('#') {
+            input_text.set(without_trigger.to_string());
         }
 
         // Add tab as attachment (no caching, just store tab info)
@@ -549,6 +561,19 @@ pub fn TextInput(disabled: bool) -> Element {
         });
 
         show_tab_selector.set(false);
+    };
+
+    // Completing a mention writes the soul's name into the text, where it stays:
+    // the message reads the way the user wrote it, and `handle_send` resolves the
+    // same `@name` again on the way out.
+    let mut handle_select_soul = move |soul: crate::state::SoulSummary| {
+        let current = input_text.read().clone();
+        if let Some(at) = current.rfind('@') {
+            input_text.set(format!("{}@{} ", &current[..at], soul.name));
+        }
+        show_soul_selector.set(false);
+        soul_filter.set(String::new());
+        selected_soul_index.set(0);
     };
 
     let mut handle_select_skill = move |skill: SkillItem| {
@@ -619,7 +644,10 @@ pub fn TextInput(disabled: bool) -> Element {
                 // Tab reference: add to tab_ids
                 if let Some(tab_id) = file.tab_id {
                     tab_ids.push(shared_protocol::chat::TabReference {
-                        space: file.tab_space.clone().unwrap_or_else(|| "default".to_string()),
+                        space: file
+                            .tab_space
+                            .clone()
+                            .unwrap_or_else(|| shared_protocol::DEFAULT_COOKIE_STORE_ID.to_string()),
                         tab_id,
                         tab_title: file.name.clone(),
                         url: String::new(),
@@ -665,6 +693,15 @@ pub fn TextInput(disabled: bool) -> Element {
         let mock_enabled = ctx.mock_enabled;
         let mode = ctx.chat_mode.read().clone();
 
+        // What the user's `@` asked for. Resolved here, against the soul list, so
+        // the daemon never has to guess whether an `@` in a sentence was meant
+        // for it. A name nobody has is left as plain text.
+        let soul_mention = shared_protocol::chat::find_mention(&text)
+            .and_then(|typed| {
+                crate::state::soul::find_soul_by_mention(&ctx.souls.read(), typed)
+                    .map(|s| shared_protocol::SoulMention::soul(&s.slug))
+            });
+
         wasm_bindgen_futures::spawn_local(async move {
             if mock_enabled {
                 crate::mock::mock_send_message(ctx, display_text).await;
@@ -681,7 +718,7 @@ pub fn TextInput(disabled: bool) -> Element {
                     }
                 }
 
-                let _ = crate::messaging::send_chat_message(&session_id, text, mode, protocol_attachments, local_files, tab_id, all_tab_ids).await;
+                let _ = crate::messaging::send_chat_message(&session_id, text, mode, protocol_attachments, local_files, tab_id, all_tab_ids, soul_mention).await;
             }
         });
     };
@@ -698,18 +735,34 @@ pub fn TextInput(disabled: bool) -> Element {
     let handle_input = move |evt: Event<FormData>| {
         let value = evt.value();
 
-        // Check for @ trigger (tab selector)
-        if value.ends_with('@') {
-            tracing::info!("handle_input: @ detected, showing tab selector");
+        // Check for # trigger (tab selector). `@` now picks a soul instead, and
+        // the boundary rules live in shared_protocol so a pasted URL fragment
+        // (`…/page#section`) and a Markdown heading never open this.
+        if shared_protocol::chat::ends_with_tab_trigger(&value) {
+            tracing::info!("handle_input: # detected, showing tab selector");
             refresh_tabs();
             show_tab_selector.set(true);
             show_skill_selector.set(false);
-        } else if !value.contains('@') {
-             // Close if @ is removed
-             if show_tab_selector() {
-                 tracing::info!("handle_input: @ removed, hiding tab selector");
-             }
-             show_tab_selector.set(false);
+        } else if show_tab_selector() {
+            // Close as soon as the trigger stops being the thing they typed last.
+            tracing::info!("handle_input: # trigger gone, hiding tab selector");
+            show_tab_selector.set(false);
+        }
+
+        // Check for @ trigger (soul picker). The boundary rules live in
+        // shared_protocol, so an email address never opens this.
+        match shared_protocol::chat::active_mention_prefix(&value) {
+            Some(prefix) => {
+                soul_filter.set(prefix.to_string());
+                show_soul_selector.set(true);
+                selected_soul_index.set(0);
+                show_tab_selector.set(false);
+            }
+            None if show_soul_selector() => {
+                show_soul_selector.set(false);
+                soul_filter.set(String::new());
+            }
+            None => {}
         }
 
         // Check for / trigger (skill selector)
@@ -743,6 +796,46 @@ pub fn TextInput(disabled: bool) -> Element {
     };
 
     let handle_keydown = move |evt: KeyboardEvent| {
+        // Soul picker keyboard navigation. Same shape as the skill picker below:
+        // arrows move, Enter/Tab pick, Escape backs out.
+        if show_soul_selector() {
+            let souls = filtered_souls.read();
+            let current_index = selected_soul_index();
+
+            match evt.key() {
+                Key::ArrowDown => {
+                    evt.prevent_default();
+                    if current_index < souls.len().saturating_sub(1) {
+                        selected_soul_index.set(current_index + 1);
+                    }
+                    return;
+                }
+                Key::ArrowUp => {
+                    evt.prevent_default();
+                    if current_index > 0 {
+                        selected_soul_index.set(current_index - 1);
+                    }
+                    return;
+                }
+                Key::Enter | Key::Tab => {
+                    if let Some(soul) = souls.get(current_index).cloned() {
+                        evt.prevent_default();
+                        drop(souls);
+                        handle_select_soul(soul);
+                        return;
+                    }
+                }
+                Key::Escape => {
+                    evt.prevent_default();
+                    drop(souls);
+                    show_soul_selector.set(false);
+                    soul_filter.set(String::new());
+                    return;
+                }
+                _ => {}
+            }
+        }
+
         // Skill selector keyboard navigation
         if show_skill_selector() {
             let skills = filtered_skills.read();
@@ -806,6 +899,57 @@ pub fn TextInput(disabled: bool) -> Element {
 
     rsx! {
         div { class: "text-input-wrapper",
+            // Soul picker (@)
+            if show_soul_selector() {
+                div { class: "soul-selector-popup",
+                    div { class: "soul-selector-header",
+                        span { class: "soul-selector-title", "Assistants" }
+                        span { class: "soul-selector-hint", "↑↓ to navigate, Enter to select" }
+                    }
+
+                    div { class: "soul-selector-list",
+                        for (index, soul) in filtered_souls.read().iter().enumerate() {
+                            {
+                                let picked = soul.clone();
+                                let is_selected = index == selected_soul_index();
+                                let name = soul.name.clone();
+                                let description = soul.description.clone();
+                                let avatar = soul.avatar.clone();
+
+                                rsx! {
+                                    div {
+                                        class: if is_selected { "soul-selector-item selected" } else { "soul-selector-item" },
+                                        onclick: move |_| handle_select_soul(picked.clone()),
+                                        onmouseenter: move |_| selected_soul_index.set(index),
+
+                                        if let Some(ref avatar) = avatar {
+                                            img { class: "soul-selector-avatar", src: "{avatar}", alt: "" }
+                                        } else {
+                                            div { class: "soul-selector-avatar soul-selector-avatar-empty" }
+                                        }
+
+                                        div { class: "soul-selector-info",
+                                            span { class: "soul-selector-name", "@{name}" }
+                                            span { class: "soul-selector-desc", "{description}" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if filtered_souls.read().is_empty() {
+                            div { class: "soul-selector-empty",
+                                if ctx.souls.read().is_empty() {
+                                    "No assistants yet. Add one in Settings → Space Souls."
+                                } else {
+                                    "No assistant by that name."
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Tab Selector Popup
             if show_tab_selector() {
                 div { class: "tab-selector-popup",

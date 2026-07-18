@@ -1090,6 +1090,41 @@ fn handle_system_response(mut ctx: AppContext, payload: SystemResponsePayload) {
     tracing::debug!("Received system response for command: {}", payload.command);
 
     match payload.command.as_str() {
+        "soul.list" => {
+            if payload.success {
+                if let Some(souls) = payload
+                    .data
+                    .as_ref()
+                    .and_then(|d| d.get("souls"))
+                    .and_then(|s| serde_json::from_value::<Vec<crate::state::SoulSummary>>(s.clone()).ok())
+                {
+                    tracing::info!("[Sidebar] {} soul(s) available", souls.len());
+                    ctx.souls.set(souls);
+                }
+            } else {
+                tracing::error!("soul.list failed: {:?}", payload.error);
+            }
+        }
+        // All three carry the same shape: the full bindings map after the change.
+        "soul.bindings" | "soul.bind" | "soul.unbind" => {
+            if payload.success {
+                if let Some(bindings) = payload
+                    .data
+                    .as_ref()
+                    .and_then(|d| d.get("bindings"))
+                    .and_then(|b| {
+                        serde_json::from_value::<std::collections::HashMap<String, String>>(
+                            b.clone(),
+                        )
+                        .ok()
+                    })
+                {
+                    ctx.soul_bindings.set(bindings);
+                }
+            } else {
+                tracing::error!("{} failed: {:?}", payload.command, payload.error);
+            }
+        }
         "session.resolve" => {
             if payload.success {
                 if let Some(data) = payload.data {
@@ -1631,6 +1666,9 @@ fn handle_internal_message(mut ctx: AppContext, message: InternalMessage) {
                     url: payload.url,
                     title: payload.title,
                     favicon_url: payload.favicon_url,
+                    cookie_store_id: payload.cookie_store_id.clone().unwrap_or_else(|| {
+                        shared_protocol::DEFAULT_COOKIE_STORE_ID.to_string()
+                    }),
                 });
                 // Clear pending mode choice on tab switch
                 ctx.pending_mode_choice.set(None);

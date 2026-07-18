@@ -79,6 +79,13 @@ pub struct AppContext {
     pub pending_skills_update: Signal<Option<SkillsUpdateRequestPayload>>,
     /// User avatar data URL (from settings)
     pub avatar_url: Signal<Option<String>>,
+    /// Every soul the user can bind or mention, from `soul.list`.
+    pub souls: Signal<Vec<crate::state::SoulSummary>>,
+    /// Container (cookieStoreId) -> soul slug, from `soul.bindings`.
+    pub soul_bindings: Signal<std::collections::HashMap<String, String>>,
+    /// The soul answering right now, and whether it is this Space's own or a
+    /// temporary pick. `None` means the default assistant is answering.
+    pub active_soul: Signal<Option<crate::state::ActiveSoul>>,
     /// Whether the sidebar is in minimized rail mode
     pub minimized: Signal<bool>,
     /// Whether this is the first run (no config file exists)
@@ -147,6 +154,9 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
     let pending_tool_auth = use_signal(|| None::<ToolAuthRequest>);
     let pending_skills_update = use_signal(|| None::<SkillsUpdateRequestPayload>);
     let avatar_url = use_signal(|| None::<String>);
+    let souls = use_signal(Vec::<crate::state::SoulSummary>::new);
+    let soul_bindings = use_signal(std::collections::HashMap::<String, String>::new);
+    let active_soul = use_signal(|| None::<crate::state::ActiveSoul>);
     let minimized = use_signal(|| false);
     let event_notifications = use_signal(Vec::new);
     let render_jobs = use_signal(std::collections::HashMap::new);
@@ -187,6 +197,9 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
         pending_tool_auth,
         pending_skills_update,
         avatar_url,
+        souls,
+        soul_bindings,
+        active_soul,
         minimized,
         event_notifications,
         render_jobs,
@@ -344,12 +357,21 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
                         url: tab_payload.url,
                         title: tab_payload.title,
                         favicon_url: tab_payload.favicon_url,
+                        cookie_store_id: tab_payload.cookie_store_id.unwrap_or_else(|| {
+                            shared_protocol::DEFAULT_COOKIE_STORE_ID.to_string()
+                        }),
                     });
                 }
 
                 // Request session list for history
                 ctx.history.write().set_loading();
                 let _ = crate::messaging::send_session_list(50, 0).await;
+
+                // Which souls exist, and which Space uses which. Both land in
+                // signals via handle_system_response; an empty result just means
+                // nobody has made a soul yet, which is the normal first run.
+                let _ = crate::messaging::send_soul_list().await;
+                let _ = crate::messaging::send_soul_bindings().await;
 
                 // Fetch avatar from settings (retry if ContentStore not hydrated yet)
                 for attempt in 0..3 {

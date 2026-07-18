@@ -38,6 +38,11 @@ const CHANNEL_NAMES = {
   MCP: 'com.nevoflux.agent.mcp', // MCP channel (bidirectional)
 };
 
+// The cookieStoreId Firefox reports for tabs outside any container. It is the
+// single canonical "no container" value on the wire: never '', never 'default'.
+// Mirrors DEFAULT_COOKIE_STORE_ID in shared-protocol/src/chat.rs.
+const DEFAULT_COOKIE_STORE_ID = 'firefox-default';
+
 // =============================================================================
 // Background API (Sidebar callable, "bg:" prefix)
 // =============================================================================
@@ -247,6 +252,32 @@ function ensureBackgroundNotifySubscription() {
     bridgeId: null,
     patterns: ['ui:notification:agent'],
   });
+}
+
+/**
+ * Ensure the background-owned `ui:soul:active` subscription is tracked, so the
+ * floating avatar wears the current soul's face even while the sidebar is
+ * closed — which is exactly when the floating avatar is the only thing visible.
+ * Idempotent; registered alongside the schedule subscription.
+ */
+function ensureBackgroundSoulSubscription() {
+  if (eventBusSubscriptions.has('bg-soul')) return;
+  eventBusSubscriptions.set('bg-soul', {
+    source: 'background',
+    tabId: null,
+    bridgeId: null,
+    patterns: ['ui:soul:active'],
+  });
+}
+
+/**
+ * Handle a delivered `ui:soul:active` event: a different soul is answering, so
+ * the avatar should look like them. A soul with no avatar of its own falls back
+ * to the global identity avatar rather than going blank.
+ */
+function handleActiveSoulEvent(event) {
+  const avatar = event?.payload?.avatar;
+  globalThis.__nf_avatar?.setAvatarImage(avatar || '');
 }
 
 // Bounded FIFO dedupe for background-consumed notification events (sticky
@@ -886,6 +917,7 @@ class NativeChannel {
         // future reconnect's), regardless of whether the sidebar is open.
         ensureBackgroundScheduleSubscription();
         ensureBackgroundNotifySubscription();
+        ensureBackgroundSoulSubscription();
         this.replaySubscriptions();
       }
 
@@ -1412,6 +1444,8 @@ class ChannelManager {
           // double-deliver). Dispatch by subscription id.
           if (subId === 'bg-notify') {
             handleUserNotification(eventPayload.event);
+          } else if (subId === 'bg-soul') {
+            handleActiveSoulEvent(eventPayload.event);
           } else {
             handleScheduleEvent(eventPayload.event);
           }
@@ -2176,6 +2210,21 @@ const AvatarController = {
   setJobs(badge) {
     this.jobsBadge = badge;
     if (this.shown) this.pushState();
+  },
+
+  // Called by handleActiveSoulEvent() when a different soul starts answering.
+  // Stored unconditionally so the next show() already has the right face (the
+  // avatar is usually hidden while the sidebar is open, which is exactly when
+  // souls get switched); pushed straight to chrome when it is already showing.
+  setAvatarImage(url) {
+    this._avatarImage = url;
+    if (this.shown) {
+      try {
+        browser.nevoflux.setAgentAvatarImage(url);
+      } catch (e) {
+        console.warn('[NevoFlux] Failed to set avatar image:', e);
+      }
+    }
   },
 
   pushState() {
@@ -3744,6 +3793,7 @@ async function getTabContext(tabId = null) {
       title: '',
       favicon_url: null,
       status: 'complete',
+      cookie_store_id: DEFAULT_COOKIE_STORE_ID,
     };
   }
 
@@ -3763,6 +3813,7 @@ async function getTabContext(tabId = null) {
     title: tab.title || '',
     favicon_url: tab.favIconUrl || null,
     status: tab.status || 'complete',
+    cookie_store_id: tab.cookieStoreId || DEFAULT_COOKIE_STORE_ID,
   };
 }
 

@@ -5,9 +5,11 @@
 //! Input area components
 
 mod context_bar;
+mod soul_chip;
 mod text_input;
 
 pub use context_bar::ContextBar;
+pub use soul_chip::SoulChip;
 pub use text_input::TextInput;
 
 use dioxus::prelude::*;
@@ -26,6 +28,9 @@ pub fn InputArea() -> Element {
 
     rsx! {
         div { class: "input-area",
+            // Who is answering (only when a soul is bound or picked)
+            SoulChip {}
+
             // Context bar (current tab info)
             ContextBar {}
 

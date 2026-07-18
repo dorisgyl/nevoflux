@@ -7,7 +7,9 @@
         "choices": [
           {
             "type": "string",
-            "enum": ["nevoflux"]
+            "enum": [
+              "nevoflux"
+            ]
           }
         ]
       }
@@ -16,24 +18,40 @@
   {
     "namespace": "nevoflux",
     "description": "NevoFlux browser automation and data extraction API",
-    "permissions": ["nevoflux"],
+    "permissions": [
+      "nevoflux"
+    ],
     "types": [
       {
         "id": "ApiResult",
         "type": "object",
         "properties": {
-          "success": { "type": "boolean" },
-          "error": { "$ref": "ApiError", "optional": true }
+          "success": {
+            "type": "boolean"
+          },
+          "error": {
+            "$ref": "ApiError",
+            "optional": true
+          }
         }
       },
       {
         "id": "ApiError",
         "type": "object",
         "properties": {
-          "code": { "type": "integer" },
-          "message": { "type": "string" },
-          "recoverable": { "type": "boolean" },
-          "suggestion": { "type": "string", "optional": true }
+          "code": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recoverable": {
+            "type": "boolean"
+          },
+          "suggestion": {
+            "type": "string",
+            "optional": true
+          }
         }
       },
       {
@@ -68,7 +86,9 @@
           "keywords": {
             "type": "array",
             "optional": true,
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "Keywords to locate target elements via text search"
           }
         }
@@ -77,58 +97,123 @@
         "id": "SnapshotResult",
         "type": "object",
         "properties": {
-          "tree": { "type": "string" },
-          "refs": { "type": "object" },
-          "viewportInfo": { "type": "object", "optional": true },
-          "stats": { "type": "object", "optional": true },
-          "url": { "type": "string", "optional": true },
-          "title": { "type": "string", "optional": true }
+          "tree": {
+            "type": "string"
+          },
+          "refs": {
+            "type": "object"
+          },
+          "viewportInfo": {
+            "type": "object",
+            "optional": true
+          },
+          "stats": {
+            "type": "object",
+            "optional": true
+          },
+          "url": {
+            "type": "string",
+            "optional": true
+          },
+          "title": {
+            "type": "string",
+            "optional": true
+          }
         }
       },
       {
         "id": "ScreenshotOptions",
         "type": "object",
         "properties": {
-          "fullPage": { "type": "boolean", "optional": true },
-          "type": { "type": "string", "enum": ["png", "jpeg"], "optional": true },
-          "quality": { "type": "integer", "optional": true }
+          "fullPage": {
+            "type": "boolean",
+            "optional": true
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "png",
+              "jpeg"
+            ],
+            "optional": true
+          },
+          "quality": {
+            "type": "integer",
+            "optional": true
+          }
         }
       },
       {
         "id": "ScreenshotResult",
         "type": "object",
         "properties": {
-          "image": { "type": "string" },
-          "mimeType": { "type": "string" },
-          "width": { "type": "integer" },
-          "height": { "type": "integer" }
+          "image": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "width": {
+            "type": "integer"
+          },
+          "height": {
+            "type": "integer"
+          }
         }
       },
       {
         "id": "ClickOptions",
         "type": "object",
         "properties": {
-          "button": { "type": "string", "enum": ["left", "right", "middle"], "optional": true },
-          "clickCount": { "type": "integer", "optional": true },
-          "delay": { "type": "integer", "optional": true },
-          "force": { "type": "boolean", "optional": true }
+          "button": {
+            "type": "string",
+            "enum": [
+              "left",
+              "right",
+              "middle"
+            ],
+            "optional": true
+          },
+          "clickCount": {
+            "type": "integer",
+            "optional": true
+          },
+          "delay": {
+            "type": "integer",
+            "optional": true
+          },
+          "force": {
+            "type": "boolean",
+            "optional": true
+          }
         }
       },
       {
         "id": "TypeOptions",
         "type": "object",
         "properties": {
-          "delay": { "type": "integer", "optional": true }
+          "delay": {
+            "type": "integer",
+            "optional": true
+          }
         }
       },
       {
         "id": "WaitOptions",
         "type": "object",
         "properties": {
-          "timeout": { "type": "integer", "optional": true },
+          "timeout": {
+            "type": "integer",
+            "optional": true
+          },
           "state": {
             "type": "string",
-            "enum": ["visible", "hidden", "attached", "detached"],
+            "enum": [
+              "visible",
+              "hidden",
+              "attached",
+              "detached"
+            ],
             "optional": true
           }
         }
@@ -137,10 +222,17 @@
         "id": "NavigationOptions",
         "type": "object",
         "properties": {
-          "timeout": { "type": "integer", "optional": true },
+          "timeout": {
+            "type": "integer",
+            "optional": true
+          },
           "waitUntil": {
             "type": "string",
-            "enum": ["load", "domcontentloaded", "networkidle"],
+            "enum": [
+              "load",
+              "domcontentloaded",
+              "networkidle"
+            ],
             "optional": true
           }
         }
@@ -149,19 +241,33 @@
         "id": "FilterResult",
         "type": "object",
         "properties": {
-          "text": { "type": "string" },
-          "filteredCount": { "type": "integer" },
-          "filtered": { "type": "boolean" }
+          "text": {
+            "type": "string"
+          },
+          "filteredCount": {
+            "type": "integer"
+          },
+          "filtered": {
+            "type": "boolean"
+          }
         }
       },
       {
         "id": "PrivacyConfig",
         "type": "object",
         "properties": {
-          "enabled": { "type": "boolean" },
-          "filters": { "type": "object" },
-          "mode": { "type": "string" },
-          "scope": { "type": "string" }
+          "enabled": {
+            "type": "boolean"
+          },
+          "filters": {
+            "type": "object"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          }
         }
       },
       {
@@ -169,25 +275,63 @@
         "type": "object",
         "additionalProperties": true,
         "properties": {
-          "id": { "type": "integer" },
-          "url": { "type": "string" },
-          "title": { "type": "string" },
-          "active": { "type": "boolean" },
-          "index": { "type": "integer" },
-          "windowId": { "type": "integer" },
-          "status": { "type": "string" },
+          "id": {
+            "type": "integer"
+          },
+          "url": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "index": {
+            "type": "integer"
+          },
+          "windowId": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
           "space": {
-            "choices": [{ "type": "object", "additionalProperties": true }, { "type": "null" }],
+            "choices": [
+              {
+                "type": "object",
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ],
             "optional": true,
             "description": "The Zen space ({id, name}) the tab belongs to, or null."
           },
           "folder": {
-            "choices": [{ "type": "object", "additionalProperties": true }, { "type": "null" }],
+            "choices": [
+              {
+                "type": "object",
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ],
             "optional": true,
             "description": "The non-live Zen folder ({id, name}) the tab belongs to, or null."
           },
           "liveFolder": {
-            "choices": [{ "type": "object", "additionalProperties": true }, { "type": "null" }],
+            "choices": [
+              {
+                "type": "object",
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ],
             "optional": true,
             "description": "The Zen live folder ({id, name}) the tab belongs to, or null."
           },
@@ -202,188 +346,406 @@
         "id": "TabCreateOptions",
         "type": "object",
         "properties": {
-          "url": { "type": "string", "optional": true },
-          "active": { "type": "boolean", "optional": true },
-          "windowId": { "type": "integer", "optional": true },
-          "index": { "type": "integer", "optional": true }
+          "url": {
+            "type": "string",
+            "optional": true
+          },
+          "active": {
+            "type": "boolean",
+            "optional": true
+          },
+          "windowId": {
+            "type": "integer",
+            "optional": true
+          },
+          "index": {
+            "type": "integer",
+            "optional": true
+          }
         }
       },
       {
         "id": "TabQueryFilter",
         "type": "object",
         "properties": {
-          "active": { "type": "boolean", "optional": true },
-          "url": { "type": "string", "optional": true },
-          "title": { "type": "string", "optional": true },
-          "windowId": { "type": "integer", "optional": true }
+          "active": {
+            "type": "boolean",
+            "optional": true
+          },
+          "url": {
+            "type": "string",
+            "optional": true
+          },
+          "title": {
+            "type": "string",
+            "optional": true
+          },
+          "windowId": {
+            "type": "integer",
+            "optional": true
+          }
         }
       },
       {
         "id": "WindowCreateOptions",
         "type": "object",
         "properties": {
-          "url": { "type": "string", "optional": true },
-          "incognito": { "type": "boolean", "optional": true },
-          "width": { "type": "integer", "optional": true },
-          "height": { "type": "integer", "optional": true }
+          "url": {
+            "type": "string",
+            "optional": true
+          },
+          "incognito": {
+            "type": "boolean",
+            "optional": true
+          },
+          "width": {
+            "type": "integer",
+            "optional": true
+          },
+          "height": {
+            "type": "integer",
+            "optional": true
+          }
         }
       },
       {
         "id": "KeyPressOptions",
         "type": "object",
         "properties": {
-          "modifiers": { "type": "array", "items": { "type": "string" }, "optional": true },
-          "delay": { "type": "integer", "optional": true }
+          "modifiers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "optional": true
+          },
+          "delay": {
+            "type": "integer",
+            "optional": true
+          }
         }
       },
       {
         "id": "MouseButtonOptions",
         "type": "object",
         "properties": {
-          "button": { "type": "string", "enum": ["left", "right", "middle"], "optional": true }
+          "button": {
+            "type": "string",
+            "enum": [
+              "left",
+              "right",
+              "middle"
+            ],
+            "optional": true
+          }
         }
       },
       {
         "id": "WheelOptions",
         "type": "object",
         "properties": {
-          "deltaX": { "type": "integer", "optional": true },
-          "deltaY": { "type": "integer", "optional": true }
+          "deltaX": {
+            "type": "integer",
+            "optional": true
+          },
+          "deltaY": {
+            "type": "integer",
+            "optional": true
+          }
         }
       },
       {
         "id": "DragOptions",
         "type": "object",
         "properties": {
-          "steps": { "type": "integer", "optional": true }
+          "steps": {
+            "type": "integer",
+            "optional": true
+          }
         }
       },
       {
         "id": "Cookie",
         "type": "object",
         "properties": {
-          "name": { "type": "string" },
-          "value": { "type": "string" },
-          "domain": { "type": "string" },
-          "path": { "type": "string" },
-          "secure": { "type": "boolean" },
-          "httpOnly": { "type": "boolean" },
-          "sameSite": { "type": "string" },
-          "expirationDate": { "type": "number", "optional": true }
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "secure": {
+            "type": "boolean"
+          },
+          "httpOnly": {
+            "type": "boolean"
+          },
+          "sameSite": {
+            "type": "string"
+          },
+          "expirationDate": {
+            "type": "number",
+            "optional": true
+          }
         }
       },
       {
         "id": "CookieSetOptions",
         "type": "object",
         "properties": {
-          "url": { "type": "string" },
-          "name": { "type": "string" },
-          "value": { "type": "string" },
-          "domain": { "type": "string", "optional": true },
-          "path": { "type": "string", "optional": true },
-          "secure": { "type": "boolean", "optional": true },
-          "httpOnly": { "type": "boolean", "optional": true },
-          "sameSite": { "type": "string", "optional": true },
-          "expirationDate": { "type": "number", "optional": true }
+          "url": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string",
+            "optional": true
+          },
+          "path": {
+            "type": "string",
+            "optional": true
+          },
+          "secure": {
+            "type": "boolean",
+            "optional": true
+          },
+          "httpOnly": {
+            "type": "boolean",
+            "optional": true
+          },
+          "sameSite": {
+            "type": "string",
+            "optional": true
+          },
+          "expirationDate": {
+            "type": "number",
+            "optional": true
+          }
         }
       },
       {
         "id": "CookieFilter",
         "type": "object",
         "properties": {
-          "url": { "type": "string", "optional": true },
-          "name": { "type": "string", "optional": true },
-          "domain": { "type": "string", "optional": true }
+          "url": {
+            "type": "string",
+            "optional": true
+          },
+          "name": {
+            "type": "string",
+            "optional": true
+          },
+          "domain": {
+            "type": "string",
+            "optional": true
+          }
         }
       },
       {
         "id": "CaptureOptions",
         "type": "object",
         "properties": {
-          "urlPattern": { "type": "string", "optional": true },
-          "resourceTypes": { "type": "array", "items": { "type": "string" }, "optional": true },
-          "recordBody": { "type": "boolean", "optional": true }
+          "urlPattern": {
+            "type": "string",
+            "optional": true
+          },
+          "resourceTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "optional": true
+          },
+          "recordBody": {
+            "type": "boolean",
+            "optional": true
+          }
         }
       },
       {
         "id": "CapturedRequest",
         "type": "object",
         "properties": {
-          "url": { "type": "string" },
-          "method": { "type": "string" },
-          "resourceType": { "type": "string" },
-          "headers": { "type": "object" },
-          "status": { "type": "integer", "optional": true },
-          "timestamp": { "type": "number" },
-          "requestBody": { "type": "string", "optional": true },
-          "responseBody": { "type": "string", "optional": true }
+          "url": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "resourceType": {
+            "type": "string"
+          },
+          "headers": {
+            "type": "object"
+          },
+          "status": {
+            "type": "integer",
+            "optional": true
+          },
+          "timestamp": {
+            "type": "number"
+          },
+          "requestBody": {
+            "type": "string",
+            "optional": true
+          },
+          "responseBody": {
+            "type": "string",
+            "optional": true
+          }
         }
       },
       {
         "id": "MockResponse",
         "type": "object",
         "properties": {
-          "status": { "type": "integer", "optional": true },
-          "headers": { "type": "object", "optional": true },
-          "body": { "type": "string", "optional": true }
+          "status": {
+            "type": "integer",
+            "optional": true
+          },
+          "headers": {
+            "type": "object",
+            "optional": true
+          },
+          "body": {
+            "type": "string",
+            "optional": true
+          }
         }
       },
       {
         "id": "InterceptOptions",
         "type": "object",
         "properties": {
-          "urlPattern": { "type": "string" },
-          "resourceTypes": { "type": "array", "items": { "type": "string" }, "optional": true },
-          "handler": { "type": "string", "enum": ["block", "mock", "modify"] },
-          "mockResponse": { "$ref": "MockResponse", "optional": true },
-          "modifyHeaders": { "type": "object", "optional": true }
+          "urlPattern": {
+            "type": "string"
+          },
+          "resourceTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "optional": true
+          },
+          "handler": {
+            "type": "string",
+            "enum": [
+              "block",
+              "mock",
+              "modify"
+            ]
+          },
+          "mockResponse": {
+            "$ref": "MockResponse",
+            "optional": true
+          },
+          "modifyHeaders": {
+            "type": "object",
+            "optional": true
+          }
         }
       },
       {
         "id": "EvalOptions",
         "type": "object",
         "properties": {
-          "returnValue": { "type": "boolean", "optional": true },
-          "timeout": { "type": "integer", "optional": true }
+          "returnValue": {
+            "type": "boolean",
+            "optional": true
+          },
+          "timeout": {
+            "type": "integer",
+            "optional": true
+          }
         }
       },
       {
         "id": "EvalResult",
         "type": "object",
         "properties": {
-          "success": { "type": "boolean" },
-          "value": { "type": "any", "optional": true },
-          "type": { "type": "string", "optional": true },
-          "error": { "$ref": "ApiError", "optional": true }
+          "success": {
+            "type": "boolean"
+          },
+          "value": {
+            "type": "any",
+            "optional": true
+          },
+          "type": {
+            "type": "string",
+            "optional": true
+          },
+          "error": {
+            "$ref": "ApiError",
+            "optional": true
+          }
         }
       },
       {
         "id": "FrameInfo",
         "type": "object",
         "properties": {
-          "selector": { "type": "string" },
-          "url": { "type": "string" },
-          "name": { "type": "string" },
-          "visible": { "type": "boolean" }
+          "selector": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "visible": {
+            "type": "boolean"
+          }
         }
       },
       {
         "id": "DownloadResult",
         "type": "object",
         "properties": {
-          "success": { "type": "boolean" },
-          "url": { "type": "string", "optional": true },
-          "filename": { "type": "string", "optional": true },
-          "mimeType": { "type": "string", "optional": true },
-          "size": { "type": "integer", "optional": true },
-          "error": { "$ref": "ApiError", "optional": true }
+          "success": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string",
+            "optional": true
+          },
+          "filename": {
+            "type": "string",
+            "optional": true
+          },
+          "mimeType": {
+            "type": "string",
+            "optional": true
+          },
+          "size": {
+            "type": "integer",
+            "optional": true
+          },
+          "error": {
+            "$ref": "ApiError",
+            "optional": true
+          }
         }
       },
       {
         "id": "DownloadOptions",
         "type": "object",
         "properties": {
-          "timeout": { "type": "integer", "optional": true }
+          "timeout": {
+            "type": "integer",
+            "optional": true
+          }
         }
       },
       {
@@ -391,13 +753,32 @@
         "type": "object",
         "description": "Page content extraction result",
         "properties": {
-          "tabId": { "type": "integer" },
-          "url": { "type": "string" },
-          "title": { "type": "string" },
-          "content": { "type": "string" },
-          "format": { "type": "string", "enum": ["markdown", "html", "text"] },
-          "extractedAt": { "type": "integer" },
-          "wasDiscarded": { "type": "boolean" }
+          "tabId": {
+            "type": "integer"
+          },
+          "url": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "markdown",
+              "html",
+              "text"
+            ]
+          },
+          "extractedAt": {
+            "type": "integer"
+          },
+          "wasDiscarded": {
+            "type": "boolean"
+          }
         }
       },
       {
@@ -405,10 +786,23 @@
         "type": "object",
         "description": "Tab loading state",
         "properties": {
-          "discarded": { "type": "boolean" },
-          "status": { "type": "string", "enum": ["complete", "loading", "unloaded"] },
-          "url": { "type": "string" },
-          "title": { "type": "string" }
+          "discarded": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "loading",
+              "unloaded"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
         }
       },
       {
@@ -416,14 +810,33 @@
         "type": "object",
         "description": "Element picker selection result",
         "properties": {
-          "selector": { "type": "string" },
-          "xpath": { "type": "string" },
-          "tagName": { "type": "string" },
-          "id": { "type": "string", "optional": true },
-          "className": { "type": "string", "optional": true },
-          "text": { "type": "string", "optional": true },
-          "attributes": { "type": "object" },
-          "rect": { "type": "object" }
+          "selector": {
+            "type": "string"
+          },
+          "xpath": {
+            "type": "string"
+          },
+          "tagName": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "optional": true
+          },
+          "className": {
+            "type": "string",
+            "optional": true
+          },
+          "text": {
+            "type": "string",
+            "optional": true
+          },
+          "attributes": {
+            "type": "object"
+          },
+          "rect": {
+            "type": "object"
+          }
         }
       },
       {
@@ -431,12 +844,24 @@
         "type": "object",
         "description": "Text selection data",
         "properties": {
-          "text": { "type": "string" },
-          "html": { "type": "string" },
-          "rect": { "type": "object" },
-          "anchorNode": { "type": "string" },
-          "url": { "type": "string" },
-          "title": { "type": "string" }
+          "text": {
+            "type": "string"
+          },
+          "html": {
+            "type": "string"
+          },
+          "rect": {
+            "type": "object"
+          },
+          "anchorNode": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
         }
       },
       {
@@ -444,10 +869,27 @@
         "type": "object",
         "description": "Options for getTabContent",
         "properties": {
-          "format": { "type": "string", "enum": ["markdown", "html", "text"], "optional": true },
-          "selector": { "type": "string", "optional": true },
-          "autoRestore": { "type": "boolean", "optional": true },
-          "timeout": { "type": "integer", "optional": true },
+          "format": {
+            "type": "string",
+            "enum": [
+              "markdown",
+              "html",
+              "text"
+            ],
+            "optional": true
+          },
+          "selector": {
+            "type": "string",
+            "optional": true
+          },
+          "autoRestore": {
+            "type": "boolean",
+            "optional": true
+          },
+          "timeout": {
+            "type": "integer",
+            "optional": true
+          },
           "includeImages": {
             "type": "boolean",
             "optional": true,
@@ -497,14 +939,30 @@
         "type": "object",
         "description": "Options for pickElement",
         "properties": {
-          "hint": { "type": "string", "optional": true },
-          "filter": {
+          "hint": {
             "type": "string",
-            "enum": ["any", "button", "input", "link", "image", "clickable"],
             "optional": true
           },
-          "timeout": { "type": "integer", "optional": true },
-          "highlightColor": { "type": "string", "optional": true }
+          "filter": {
+            "type": "string",
+            "enum": [
+              "any",
+              "button",
+              "input",
+              "link",
+              "image",
+              "clickable"
+            ],
+            "optional": true
+          },
+          "timeout": {
+            "type": "integer",
+            "optional": true
+          },
+          "highlightColor": {
+            "type": "string",
+            "optional": true
+          }
         }
       },
       {
@@ -512,15 +970,28 @@
         "type": "object",
         "description": "Options for lockPage",
         "properties": {
-          "showOverlay": { "type": "boolean", "optional": true },
-          "message": { "type": "string", "optional": true }
+          "showOverlay": {
+            "type": "boolean",
+            "optional": true
+          },
+          "message": {
+            "type": "string",
+            "optional": true
+          }
         }
       },
       {
         "id": "ScrollOptions",
         "type": "object",
         "properties": {
-          "direction": { "type": "string", "enum": ["up", "down"], "optional": true },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down"
+            ],
+            "optional": true
+          },
           "amount": {
             "type": "string",
             "optional": true,
@@ -534,10 +1005,17 @@
         "properties": {
           "strategy": {
             "type": "string",
-            "enum": ["navigation", "interaction", "scroll"],
+            "enum": [
+              "navigation",
+              "interaction",
+              "scroll"
+            ],
             "optional": true
           },
-          "maxWait": { "type": "integer", "optional": true }
+          "maxWait": {
+            "type": "integer",
+            "optional": true
+          }
         }
       },
       {
@@ -545,7 +1023,9 @@
         "type": "object",
         "description": "Options for creating an artifact",
         "properties": {
-          "id": { "type": "string" },
+          "id": {
+            "type": "string"
+          },
           "type": {
             "type": "string",
             "optional": true,
@@ -556,7 +1036,11 @@
             "optional": true,
             "description": "Artifact title. Defaults to Untitled"
           },
-          "code": { "type": "string", "optional": true, "description": "Artifact content/code" },
+          "code": {
+            "type": "string",
+            "optional": true,
+            "description": "Artifact content/code"
+          },
           "state": {
             "type": "string",
             "optional": true,
@@ -569,14 +1053,18 @@
           },
           "permissions": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "optional": true,
             "description": "Artifact permissions"
           },
           "files": {
             "type": "object",
             "optional": true,
-            "additionalProperties": { "type": "string" },
+            "additionalProperties": {
+              "type": "string"
+            },
             "description": "Multi-file project: path to content map"
           },
           "entry": {
@@ -597,17 +1085,39 @@
         "type": "object",
         "description": "Options for updating an artifact",
         "properties": {
-          "code": { "type": "string", "optional": true, "description": "Updated content/code" },
-          "state": { "type": "string", "optional": true, "description": "Updated state" },
-          "title": { "type": "string", "optional": true, "description": "Updated title" },
-          "type": { "type": "string", "optional": true, "description": "Updated artifact type" },
+          "code": {
+            "type": "string",
+            "optional": true,
+            "description": "Updated content/code"
+          },
+          "state": {
+            "type": "string",
+            "optional": true,
+            "description": "Updated state"
+          },
+          "title": {
+            "type": "string",
+            "optional": true,
+            "description": "Updated title"
+          },
+          "type": {
+            "type": "string",
+            "optional": true,
+            "description": "Updated artifact type"
+          },
           "files": {
             "type": "object",
             "optional": true,
-            "additionalProperties": { "type": "string" },
+            "additionalProperties": {
+              "type": "string"
+            },
             "description": "Updated multi-file project content"
           },
-          "entry": { "type": "string", "optional": true, "description": "Updated entry point" }
+          "entry": {
+            "type": "string",
+            "optional": true,
+            "description": "Updated entry point"
+          }
         }
       },
       {
@@ -615,22 +1125,52 @@
         "type": "object",
         "description": "Artifact data entry",
         "properties": {
-          "id": { "type": "string" },
-          "type": { "type": "string" },
-          "title": { "type": "string" },
-          "content": { "type": "string" },
-          "state": { "type": "string" },
-          "source": { "type": "string" },
-          "permissions": { "type": "array", "items": { "type": "string" } },
-          "createdAt": { "type": "number" },
-          "updatedAt": { "type": "number" },
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
           "files": {
             "type": "object",
             "optional": true,
-            "additionalProperties": { "type": "string" }
+            "additionalProperties": {
+              "type": "string"
+            }
           },
-          "entry": { "type": "string", "optional": true },
-          "options": { "type": "object", "optional": true, "additionalProperties": true }
+          "entry": {
+            "type": "string",
+            "optional": true
+          },
+          "options": {
+            "type": "object",
+            "optional": true,
+            "additionalProperties": true
+          }
         }
       },
       {
@@ -638,9 +1178,16 @@
         "type": "object",
         "description": "A content store entry for persistence",
         "properties": {
-          "key": { "type": "string" },
-          "value": { "type": "any" },
-          "updated_at": { "type": "integer", "optional": true }
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "any"
+          },
+          "updated_at": {
+            "type": "integer",
+            "optional": true
+          }
         }
       },
       {
@@ -648,9 +1195,38 @@
         "type": "object",
         "description": "A bridge request from a nevoflux:// page",
         "properties": {
-          "id": { "type": "string" },
-          "type": { "type": "string" },
-          "payload": { "type": "any" }
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "any"
+          }
+        }
+      },
+      {
+        "id": "SpaceInfo",
+        "type": "object",
+        "description": "A Zen Space and the container it uses. Settings pairs these with souls.",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "description": "Stable Space id"
+          },
+          "name": {
+            "type": "string",
+            "description": "The name the user gave this Space"
+          },
+          "containerTabId": {
+            "type": "integer",
+            "description": "userContextId; 0 means the Space uses no container"
+          },
+          "cookieStoreId": {
+            "type": "string",
+            "description": "The container as tabs report it: 'firefox-default' or 'firefox-container-N'"
+          }
         }
       }
     ],
@@ -661,7 +1237,9 @@
         "async": "promise",
         "description": "Get API version",
         "parameters": [],
-        "returns": { "type": "string" }
+        "returns": {
+          "type": "string"
+        }
       },
       {
         "name": "getBoolPref",
@@ -669,10 +1247,19 @@
         "async": "promise",
         "description": "Read a boolean Gecko preference (parent process). Used to detect headless/automation mode before any native connection exists.",
         "parameters": [
-          { "name": "name", "type": "string" },
-          { "name": "fallback", "type": "boolean", "optional": true }
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "fallback",
+            "type": "boolean",
+            "optional": true
+          }
         ],
-        "returns": { "type": "boolean" }
+        "returns": {
+          "type": "boolean"
+        }
       },
       {
         "name": "getText",
@@ -680,10 +1267,20 @@
         "async": "promise",
         "description": "Get element text content",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "selector", "type": "string", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "selector",
+            "type": "string",
+            "optional": true
+          }
         ],
-        "returns": { "type": "string" }
+        "returns": {
+          "type": "string"
+        }
       },
       {
         "name": "getHtml",
@@ -691,10 +1288,20 @@
         "async": "promise",
         "description": "Get element innerHTML",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "selector", "type": "string", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "selector",
+            "type": "string",
+            "optional": true
+          }
         ],
-        "returns": { "type": "string" }
+        "returns": {
+          "type": "string"
+        }
       },
       {
         "name": "getValue",
@@ -702,26 +1309,51 @@
         "async": "promise",
         "description": "Get form element value",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "selector", "type": "string" }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "selector",
+            "type": "string"
+          }
         ],
-        "returns": { "type": "string" }
+        "returns": {
+          "type": "string"
+        }
       },
       {
         "name": "getUrl",
         "type": "function",
         "async": "promise",
         "description": "Get current page URL",
-        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
-        "returns": { "type": "string" }
+        "parameters": [
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "type": "string"
+        }
       },
       {
         "name": "getTitle",
         "type": "function",
         "async": "promise",
         "description": "Get page title",
-        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
-        "returns": { "type": "string" }
+        "parameters": [
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "type": "string"
+        }
       },
       {
         "name": "snapshot",
@@ -729,10 +1361,20 @@
         "async": "promise",
         "description": "Get accessibility tree snapshot",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "options", "$ref": "SnapshotOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "options",
+            "$ref": "SnapshotOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "SnapshotResult" }
+        "returns": {
+          "$ref": "SnapshotResult"
+        }
       },
       {
         "name": "screenshot",
@@ -740,10 +1382,20 @@
         "async": "promise",
         "description": "Take page screenshot",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "options", "$ref": "ScreenshotOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "options",
+            "$ref": "ScreenshotOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "ScreenshotResult" }
+        "returns": {
+          "$ref": "ScreenshotResult"
+        }
       },
       {
         "name": "getMarkdown",
@@ -751,10 +1403,20 @@
         "async": "promise",
         "description": "Get page content as Markdown using Turndown with GFM tables",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "options", "$ref": "MarkdownOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "options",
+            "$ref": "MarkdownOptions",
+            "optional": true
+          }
         ],
-        "returns": { "type": "object" }
+        "returns": {
+          "type": "object"
+        }
       },
       {
         "name": "isVisible",
@@ -762,10 +1424,19 @@
         "async": "promise",
         "description": "Check if element is visible",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "selector", "type": "string" }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "selector",
+            "type": "string"
+          }
         ],
-        "returns": { "type": "boolean" }
+        "returns": {
+          "type": "boolean"
+        }
       },
       {
         "name": "exists",
@@ -773,10 +1444,19 @@
         "async": "promise",
         "description": "Check if element exists",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "selector", "type": "string" }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "selector",
+            "type": "string"
+          }
         ],
-        "returns": { "type": "boolean" }
+        "returns": {
+          "type": "boolean"
+        }
       },
       {
         "name": "click",
@@ -784,11 +1464,24 @@
         "async": "promise",
         "description": "Click element",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "selector", "type": "string" },
-          { "name": "options", "$ref": "ClickOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "selector",
+            "type": "string"
+          },
+          {
+            "name": "options",
+            "$ref": "ClickOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "clickAtCoordinates",
@@ -796,12 +1489,28 @@
         "async": "promise",
         "description": "Click at viewport coordinates using trusted events",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "x", "type": "number" },
-          { "name": "y", "type": "number" },
-          { "name": "options", "$ref": "ClickOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "x",
+            "type": "number"
+          },
+          {
+            "name": "y",
+            "type": "number"
+          },
+          {
+            "name": "options",
+            "$ref": "ClickOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "type",
@@ -809,12 +1518,28 @@
         "async": "promise",
         "description": "Type text into element",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "selector", "type": "string" },
-          { "name": "text", "type": "string" },
-          { "name": "options", "$ref": "TypeOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "selector",
+            "type": "string"
+          },
+          {
+            "name": "text",
+            "type": "string"
+          },
+          {
+            "name": "options",
+            "$ref": "TypeOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "fill",
@@ -822,11 +1547,23 @@
         "async": "promise",
         "description": "Fill form field",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "selector", "type": "string" },
-          { "name": "text", "type": "string" }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "selector",
+            "type": "string"
+          },
+          {
+            "name": "text",
+            "type": "string"
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "open",
@@ -834,11 +1571,24 @@
         "async": "promise",
         "description": "Navigate to URL",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "url", "type": "string" },
-          { "name": "options", "$ref": "NavigationOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "url",
+            "type": "string"
+          },
+          {
+            "name": "options",
+            "$ref": "NavigationOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "reload",
@@ -846,26 +1596,52 @@
         "async": "promise",
         "description": "Reload page",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "options", "$ref": "NavigationOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "options",
+            "$ref": "NavigationOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "back",
         "type": "function",
         "async": "promise",
         "description": "Go back in history",
-        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "forward",
         "type": "function",
         "async": "promise",
         "description": "Go forward in history",
-        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "waitForSelector",
@@ -873,19 +1649,39 @@
         "async": "promise",
         "description": "Wait for element",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "selector", "type": "string" },
-          { "name": "options", "$ref": "WaitOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "selector",
+            "type": "string"
+          },
+          {
+            "name": "options",
+            "$ref": "WaitOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "waitForTimeout",
         "type": "function",
         "async": "promise",
         "description": "Wait for specified time",
-        "parameters": [{ "name": "ms", "type": "integer" }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "ms",
+            "type": "integer"
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "filterSensitive",
@@ -893,10 +1689,19 @@
         "async": "promise",
         "description": "Filter sensitive information from text",
         "parameters": [
-          { "name": "text", "type": "string" },
-          { "name": "options", "type": "object", "optional": true }
+          {
+            "name": "text",
+            "type": "string"
+          },
+          {
+            "name": "options",
+            "type": "object",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "FilterResult" }
+        "returns": {
+          "$ref": "FilterResult"
+        }
       },
       {
         "name": "getPrivacyConfig",
@@ -904,55 +1709,120 @@
         "async": "promise",
         "description": "Get privacy configuration",
         "parameters": [],
-        "returns": { "$ref": "PrivacyConfig" }
+        "returns": {
+          "$ref": "PrivacyConfig"
+        }
       },
       {
         "name": "setPrivacyConfig",
         "type": "function",
         "async": "promise",
         "description": "Update privacy configuration",
-        "parameters": [{ "name": "config", "$ref": "PrivacyConfig" }],
-        "returns": { "$ref": "PrivacyConfig" }
+        "parameters": [
+          {
+            "name": "config",
+            "$ref": "PrivacyConfig"
+          }
+        ],
+        "returns": {
+          "$ref": "PrivacyConfig"
+        }
       },
       {
         "name": "createTab",
         "type": "function",
         "async": "promise",
         "description": "Create a new browser tab",
-        "parameters": [{ "name": "options", "$ref": "TabCreateOptions", "optional": true }],
-        "returns": { "$ref": "TabInfo" }
+        "parameters": [
+          {
+            "name": "options",
+            "$ref": "TabCreateOptions",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "$ref": "TabInfo"
+        }
       },
       {
         "name": "closeTab",
         "type": "function",
         "async": "promise",
         "description": "Close a browser tab",
-        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
+      },
+      {
+        "name": "getSpaces",
+        "type": "function",
+        "async": "promise",
+        "description": "List every Space and the container it uses",
+        "parameters": [],
+        "returns": {
+          "type": "array",
+          "items": {
+            "$ref": "SpaceInfo"
+          }
+        }
       },
       {
         "name": "getTab",
         "type": "function",
         "async": "promise",
         "description": "Get information about a tab",
-        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
-        "returns": { "$ref": "TabInfo" }
+        "parameters": [
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "$ref": "TabInfo"
+        }
       },
       {
         "name": "queryTabs",
         "type": "function",
         "async": "promise",
         "description": "Query tabs matching filter criteria",
-        "parameters": [{ "name": "filter", "$ref": "TabQueryFilter", "optional": true }],
-        "returns": { "type": "array", "items": { "$ref": "TabInfo" } }
+        "parameters": [
+          {
+            "name": "filter",
+            "$ref": "TabQueryFilter",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "type": "array",
+          "items": {
+            "$ref": "TabInfo"
+          }
+        }
       },
       {
         "name": "activateTab",
         "type": "function",
         "async": "promise",
         "description": "Activate (focus) a browser tab",
-        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "listTabs",
@@ -960,32 +1830,66 @@
         "async": "promise",
         "description": "List open tabs, optionally filtered by a Zen-aware scope (space/folder/live_folder). Default (scope omitted) excludes tabs inside a live folder.",
         "parameters": [
-          { "name": "windowId", "type": "integer", "optional": true },
+          {
+            "name": "windowId",
+            "type": "integer",
+            "optional": true
+          },
           {
             "name": "scope",
             "type": "string",
-            "enum": ["all", "space", "folder", "live_folder"],
+            "enum": [
+              "all",
+              "space",
+              "folder",
+              "live_folder"
+            ],
             "optional": true
           },
-          { "name": "scopeId", "type": "string", "optional": true }
+          {
+            "name": "scopeId",
+            "type": "string",
+            "optional": true
+          }
         ],
-        "returns": { "type": "array", "items": { "$ref": "TabInfo" } }
+        "returns": {
+          "type": "array",
+          "items": {
+            "$ref": "TabInfo"
+          }
+        }
       },
       {
         "name": "createWindow",
         "type": "function",
         "async": "promise",
         "description": "Create a new browser window",
-        "parameters": [{ "name": "options", "$ref": "WindowCreateOptions", "optional": true }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "options",
+            "$ref": "WindowCreateOptions",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "closeWindow",
         "type": "function",
         "async": "promise",
         "description": "Close a browser window",
-        "parameters": [{ "name": "windowId", "type": "integer", "optional": true }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "windowId",
+            "type": "integer",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "keyPress",
@@ -993,11 +1897,24 @@
         "async": "promise",
         "description": "Press a keyboard key (keydown + keyup)",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "key", "type": "string" },
-          { "name": "options", "$ref": "KeyPressOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "key",
+            "type": "string"
+          },
+          {
+            "name": "options",
+            "$ref": "KeyPressOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "keyDown",
@@ -1005,11 +1922,24 @@
         "async": "promise",
         "description": "Press down a keyboard key",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "key", "type": "string" },
-          { "name": "options", "$ref": "KeyPressOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "key",
+            "type": "string"
+          },
+          {
+            "name": "options",
+            "$ref": "KeyPressOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "keyUp",
@@ -1017,10 +1947,19 @@
         "async": "promise",
         "description": "Release a keyboard key",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "key", "type": "string" }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "key",
+            "type": "string"
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "mouseMove",
@@ -1028,11 +1967,23 @@
         "async": "promise",
         "description": "Move mouse to coordinates",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "x", "type": "number" },
-          { "name": "y", "type": "number" }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "x",
+            "type": "number"
+          },
+          {
+            "name": "y",
+            "type": "number"
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "mouseDown",
@@ -1040,10 +1991,20 @@
         "async": "promise",
         "description": "Press down a mouse button",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "options", "$ref": "MouseButtonOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "options",
+            "$ref": "MouseButtonOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "mouseUp",
@@ -1051,10 +2012,20 @@
         "async": "promise",
         "description": "Release a mouse button",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "options", "$ref": "MouseButtonOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "options",
+            "$ref": "MouseButtonOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "wheel",
@@ -1062,10 +2033,20 @@
         "async": "promise",
         "description": "Scroll using mouse wheel",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "options", "$ref": "WheelOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "options",
+            "$ref": "WheelOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "drag",
@@ -1073,12 +2054,28 @@
         "async": "promise",
         "description": "Drag element from one location to another",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "fromSelector", "type": "string" },
-          { "name": "toSelector", "type": "string" },
-          { "name": "options", "$ref": "DragOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "fromSelector",
+            "type": "string"
+          },
+          {
+            "name": "toSelector",
+            "type": "string"
+          },
+          {
+            "name": "options",
+            "$ref": "DragOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "dblclick",
@@ -1086,11 +2083,24 @@
         "async": "promise",
         "description": "Double-click on an element",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "selector", "type": "string" },
-          { "name": "options", "$ref": "ClickOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "selector",
+            "type": "string"
+          },
+          {
+            "name": "options",
+            "$ref": "ClickOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "focus",
@@ -1098,10 +2108,19 @@
         "async": "promise",
         "description": "Focus on an element",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "selector", "type": "string" }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "selector",
+            "type": "string"
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "clear",
@@ -1109,42 +2128,85 @@
         "async": "promise",
         "description": "Clear the value of an input element",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "selector", "type": "string" }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "selector",
+            "type": "string"
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "getCookies",
         "type": "function",
         "async": "promise",
         "description": "Get cookies matching filter criteria",
-        "parameters": [{ "name": "filter", "$ref": "CookieFilter", "optional": true }],
-        "returns": { "type": "array", "items": { "$ref": "Cookie" } }
+        "parameters": [
+          {
+            "name": "filter",
+            "$ref": "CookieFilter",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "type": "array",
+          "items": {
+            "$ref": "Cookie"
+          }
+        }
       },
       {
         "name": "setCookie",
         "type": "function",
         "async": "promise",
         "description": "Set a cookie",
-        "parameters": [{ "name": "cookie", "$ref": "CookieSetOptions" }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "cookie",
+            "$ref": "CookieSetOptions"
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "deleteCookies",
         "type": "function",
         "async": "promise",
         "description": "Delete cookies matching filter criteria",
-        "parameters": [{ "name": "filter", "$ref": "CookieFilter", "optional": true }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "filter",
+            "$ref": "CookieFilter",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "clearCookies",
         "type": "function",
         "async": "promise",
         "description": "Clear all cookies for a domain",
-        "parameters": [{ "name": "domain", "type": "string", "optional": true }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "domain",
+            "type": "string",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "getLocalStorage",
@@ -1152,10 +2214,20 @@
         "async": "promise",
         "description": "Get localStorage value(s)",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "key", "type": "string", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "key",
+            "type": "string",
+            "optional": true
+          }
         ],
-        "returns": { "type": "any" }
+        "returns": {
+          "type": "any"
+        }
       },
       {
         "name": "setLocalStorage",
@@ -1163,11 +2235,23 @@
         "async": "promise",
         "description": "Set a localStorage value",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "key", "type": "string" },
-          { "name": "value", "type": "any" }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "key",
+            "type": "string"
+          },
+          {
+            "name": "value",
+            "type": "any"
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "removeLocalStorage",
@@ -1175,18 +2259,35 @@
         "async": "promise",
         "description": "Remove a localStorage item",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "key", "type": "string" }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "key",
+            "type": "string"
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "clearLocalStorage",
         "type": "function",
         "async": "promise",
         "description": "Clear all localStorage",
-        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "getSessionStorage",
@@ -1194,10 +2295,20 @@
         "async": "promise",
         "description": "Get sessionStorage value(s)",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "key", "type": "string", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "key",
+            "type": "string",
+            "optional": true
+          }
         ],
-        "returns": { "type": "any" }
+        "returns": {
+          "type": "any"
+        }
       },
       {
         "name": "setSessionStorage",
@@ -1205,11 +2316,23 @@
         "async": "promise",
         "description": "Set a sessionStorage value",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "key", "type": "string" },
-          { "name": "value", "type": "any" }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "key",
+            "type": "string"
+          },
+          {
+            "name": "value",
+            "type": "any"
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "removeSessionStorage",
@@ -1217,58 +2340,117 @@
         "async": "promise",
         "description": "Remove a sessionStorage item",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "key", "type": "string" }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "key",
+            "type": "string"
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "clearSessionStorage",
         "type": "function",
         "async": "promise",
         "description": "Clear all sessionStorage",
-        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "startCapture",
         "type": "function",
         "async": "promise",
         "description": "Start capturing network requests",
-        "parameters": [{ "name": "options", "$ref": "CaptureOptions", "optional": true }],
-        "returns": { "type": "string" }
+        "parameters": [
+          {
+            "name": "options",
+            "$ref": "CaptureOptions",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "type": "string"
+        }
       },
       {
         "name": "stopCapture",
         "type": "function",
         "async": "promise",
         "description": "Stop capturing network requests and return captured data",
-        "parameters": [{ "name": "handle", "type": "string" }],
-        "returns": { "type": "array", "items": { "$ref": "CapturedRequest" } }
+        "parameters": [
+          {
+            "name": "handle",
+            "type": "string"
+          }
+        ],
+        "returns": {
+          "type": "array",
+          "items": {
+            "$ref": "CapturedRequest"
+          }
+        }
       },
       {
         "name": "getCaptures",
         "type": "function",
         "async": "promise",
         "description": "Get captured network requests without stopping",
-        "parameters": [{ "name": "handle", "type": "string" }],
-        "returns": { "type": "array", "items": { "$ref": "CapturedRequest" } }
+        "parameters": [
+          {
+            "name": "handle",
+            "type": "string"
+          }
+        ],
+        "returns": {
+          "type": "array",
+          "items": {
+            "$ref": "CapturedRequest"
+          }
+        }
       },
       {
         "name": "intercept",
         "type": "function",
         "async": "promise",
         "description": "Set up request interception",
-        "parameters": [{ "name": "options", "$ref": "InterceptOptions" }],
-        "returns": { "type": "string" }
+        "parameters": [
+          {
+            "name": "options",
+            "$ref": "InterceptOptions"
+          }
+        ],
+        "returns": {
+          "type": "string"
+        }
       },
       {
         "name": "removeIntercept",
         "type": "function",
         "async": "promise",
         "description": "Remove a request interception rule",
-        "parameters": [{ "name": "handle", "type": "string" }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "handle",
+            "type": "string"
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "clearIntercepts",
@@ -1276,7 +2458,9 @@
         "async": "promise",
         "description": "Remove all request interception rules",
         "parameters": [],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "waitForRequest",
@@ -1284,10 +2468,19 @@
         "async": "promise",
         "description": "Wait for a network request matching pattern",
         "parameters": [
-          { "name": "urlPattern", "type": "string" },
-          { "name": "timeout", "type": "integer", "optional": true }
+          {
+            "name": "urlPattern",
+            "type": "string"
+          },
+          {
+            "name": "timeout",
+            "type": "integer",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "CapturedRequest" }
+        "returns": {
+          "$ref": "CapturedRequest"
+        }
       },
       {
         "name": "waitForResponse",
@@ -1295,10 +2488,19 @@
         "async": "promise",
         "description": "Wait for a network response matching pattern",
         "parameters": [
-          { "name": "urlPattern", "type": "string" },
-          { "name": "timeout", "type": "integer", "optional": true }
+          {
+            "name": "urlPattern",
+            "type": "string"
+          },
+          {
+            "name": "timeout",
+            "type": "integer",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "CapturedRequest" }
+        "returns": {
+          "$ref": "CapturedRequest"
+        }
       },
       {
         "name": "eval",
@@ -1306,11 +2508,24 @@
         "async": "promise",
         "description": "Evaluate JavaScript in page context",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "script", "type": "string" },
-          { "name": "options", "$ref": "EvalOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "script",
+            "type": "string"
+          },
+          {
+            "name": "options",
+            "$ref": "EvalOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "EvalResult" }
+        "returns": {
+          "$ref": "EvalResult"
+        }
       },
       {
         "name": "canvasEval",
@@ -1318,8 +2533,15 @@
         "async": "promise",
         "description": "Run JavaScript inside a canvas tab's artifact iframe (async postMessage round-trip) and return the last expression's value",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "script", "type": "string" },
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "script",
+            "type": "string"
+          },
           {
             "name": "options",
             "type": "object",
@@ -1334,26 +2556,53 @@
         "async": "promise",
         "description": "Add a script to be executed on page load",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "script", "type": "string" }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "script",
+            "type": "string"
+          }
         ],
-        "returns": { "type": "string" }
+        "returns": {
+          "type": "string"
+        }
       },
       {
         "name": "removeScript",
         "type": "function",
         "async": "promise",
         "description": "Remove a previously added script",
-        "parameters": [{ "name": "handle", "type": "string" }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "handle",
+            "type": "string"
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "listFrames",
         "type": "function",
         "async": "promise",
         "description": "List all iframes in current document",
-        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
-        "returns": { "type": "array", "items": { "$ref": "FrameInfo" } }
+        "parameters": [
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "type": "array",
+          "items": {
+            "$ref": "FrameInfo"
+          }
+        }
       },
       {
         "name": "switchFrame",
@@ -1361,26 +2610,51 @@
         "async": "promise",
         "description": "Switch to specified iframe",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "selector", "type": "string" }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "selector",
+            "type": "string"
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "frameMain",
         "type": "function",
         "async": "promise",
         "description": "Return to top-level main document",
-        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "dialogAccept",
         "type": "function",
         "async": "promise",
         "description": "Accept current native dialog (alert/confirm/prompt)",
-        "parameters": [{ "name": "text", "type": "string", "optional": true }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "text",
+            "type": "string",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "dialogDismiss",
@@ -1388,15 +2662,25 @@
         "async": "promise",
         "description": "Dismiss current native dialog",
         "parameters": [],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "waitForDownload",
         "type": "function",
         "async": "promise",
         "description": "Wait for a download to start",
-        "parameters": [{ "name": "options", "$ref": "DownloadOptions", "optional": true }],
-        "returns": { "$ref": "DownloadResult" }
+        "parameters": [
+          {
+            "name": "options",
+            "$ref": "DownloadOptions",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "$ref": "DownloadResult"
+        }
       },
       {
         "name": "getTabContent",
@@ -1404,18 +2688,36 @@
         "async": "promise",
         "description": "Get page content as markdown/html/text. Auto-restores discarded tabs.",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "options", "$ref": "TabContentOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "options",
+            "$ref": "TabContentOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "TabContent" }
+        "returns": {
+          "$ref": "TabContent"
+        }
       },
       {
         "name": "getTabState",
         "type": "function",
         "async": "promise",
         "description": "Get tab state (discarded, loading, complete)",
-        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
-        "returns": { "$ref": "TabState" }
+        "parameters": [
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "$ref": "TabState"
+        }
       },
       {
         "name": "pickElement",
@@ -1423,26 +2725,52 @@
         "async": "promise",
         "description": "Start element picker and wait for user selection",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "options", "$ref": "PickerOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "options",
+            "$ref": "PickerOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "PickerResult" }
+        "returns": {
+          "$ref": "PickerResult"
+        }
       },
       {
         "name": "cancelPicker",
         "type": "function",
         "async": "promise",
         "description": "Cancel active element picker",
-        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "getSelection",
         "type": "function",
         "async": "promise",
         "description": "Get current text selection from a tab",
-        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
-        "returns": { "$ref": "SelectionData" }
+        "parameters": [
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "$ref": "SelectionData"
+        }
       },
       {
         "name": "lockPage",
@@ -1450,18 +2778,36 @@
         "async": "promise",
         "description": "Lock page to prevent user interaction during agent operations",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "options", "$ref": "LockPageOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "options",
+            "$ref": "LockPageOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "unlockPage",
         "type": "function",
         "async": "promise",
         "description": "Unlock page after agent operations",
-        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "scroll",
@@ -1469,10 +2815,20 @@
         "async": "promise",
         "description": "Scroll page up or down",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "options", "$ref": "ScrollOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "options",
+            "$ref": "ScrollOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "waitForStable",
@@ -1480,18 +2836,35 @@
         "async": "promise",
         "description": "Wait for page to stabilize after an action",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "options", "$ref": "StabilityOptions", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "options",
+            "$ref": "StabilityOptions",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "createArtifact",
         "type": "function",
         "async": "promise",
         "description": "Create a new artifact and open it in a background canvas tab",
-        "parameters": [{ "name": "options", "$ref": "ArtifactCreateOptions" }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "options",
+            "$ref": "ArtifactCreateOptions"
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "updateArtifact",
@@ -1499,10 +2872,18 @@
         "async": "promise",
         "description": "Update an existing artifact's content, state, or title",
         "parameters": [
-          { "name": "id", "type": "string" },
-          { "name": "options", "$ref": "ArtifactUpdateOptions" }
+          {
+            "name": "id",
+            "type": "string"
+          },
+          {
+            "name": "options",
+            "$ref": "ArtifactUpdateOptions"
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "readArtifact",
@@ -1510,10 +2891,19 @@
         "async": "promise",
         "description": "Read artifact source code with optional line range or grep filtering",
         "parameters": [
-          { "name": "id", "type": "string" },
-          { "name": "params", "type": "object", "optional": true }
+          {
+            "name": "id",
+            "type": "string"
+          },
+          {
+            "name": "params",
+            "type": "object",
+            "optional": true
+          }
         ],
-        "returns": { "type": "object" }
+        "returns": {
+          "type": "object"
+        }
       },
       {
         "name": "editArtifact",
@@ -1521,27 +2911,52 @@
         "async": "promise",
         "description": "Edit artifact using search-and-replace (old_str must match exactly once)",
         "parameters": [
-          { "name": "id", "type": "string" },
-          { "name": "oldStr", "type": "string" },
-          { "name": "newStr", "type": "string" }
+          {
+            "name": "id",
+            "type": "string"
+          },
+          {
+            "name": "oldStr",
+            "type": "string"
+          },
+          {
+            "name": "newStr",
+            "type": "string"
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "getArtifact",
         "type": "function",
         "async": "promise",
         "description": "Get an artifact by ID",
-        "parameters": [{ "name": "id", "type": "string" }],
-        "returns": { "type": "object" }
+        "parameters": [
+          {
+            "name": "id",
+            "type": "string"
+          }
+        ],
+        "returns": {
+          "type": "object"
+        }
       },
       {
         "name": "deleteArtifact",
         "type": "function",
         "async": "promise",
         "description": "Delete an artifact by ID",
-        "parameters": [{ "name": "id", "type": "string" }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "id",
+            "type": "string"
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "listArtifacts",
@@ -1549,7 +2964,9 @@
         "async": "promise",
         "description": "List all artifacts",
         "parameters": [],
-        "returns": { "type": "object" }
+        "returns": {
+          "type": "object"
+        }
       },
       {
         "name": "openCanvasTab",
@@ -1557,17 +2974,25 @@
         "async": "promise",
         "description": "Open a nevoflux://canvas/ tab using privileged browser API (foreground)",
         "parameters": [
-          { "name": "id", "type": "string" },
+          {
+            "name": "id",
+            "type": "string"
+          },
           {
             "name": "options",
             "type": "object",
             "optional": true,
             "properties": {
-              "inBackground": { "type": "boolean", "optional": true }
+              "inBackground": {
+                "type": "boolean",
+                "optional": true
+              }
             }
           }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "openPage",
@@ -1575,25 +3000,40 @@
         "async": "promise",
         "description": "Open a nevoflux:// URL in a new tab using privileged browser API",
         "parameters": [
-          { "name": "url", "type": "string" },
+          {
+            "name": "url",
+            "type": "string"
+          },
           {
             "name": "options",
             "type": "object",
             "optional": true,
             "properties": {
-              "inBackground": { "type": "boolean", "optional": true }
+              "inBackground": {
+                "type": "boolean",
+                "optional": true
+              }
             }
           }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "getSettings",
         "type": "function",
         "async": "promise",
         "description": "Get a settings value by key",
-        "parameters": [{ "name": "key", "type": "string" }],
-        "returns": { "type": "object" }
+        "parameters": [
+          {
+            "name": "key",
+            "type": "string"
+          }
+        ],
+        "returns": {
+          "type": "object"
+        }
       },
       {
         "name": "setSettings",
@@ -1601,10 +3041,18 @@
         "async": "promise",
         "description": "Set a settings value by key",
         "parameters": [
-          { "name": "key", "type": "string" },
-          { "name": "value", "type": "any" }
+          {
+            "name": "key",
+            "type": "string"
+          },
+          {
+            "name": "value",
+            "type": "any"
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "contentStoreLoad",
@@ -1612,9 +3060,17 @@
         "async": "promise",
         "description": "Bulk-load entries into ContentStore from persistence (suppresses re-persist)",
         "parameters": [
-          { "name": "entries", "type": "array", "items": { "$ref": "ContentStoreEntry" } }
+          {
+            "name": "entries",
+            "type": "array",
+            "items": {
+              "$ref": "ContentStoreEntry"
+            }
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "bridgeRespond",
@@ -1622,10 +3078,18 @@
         "async": "promise",
         "description": "Respond to a bridge request from a nevoflux:// page",
         "parameters": [
-          { "name": "id", "type": "string" },
-          { "name": "result", "type": "any" }
+          {
+            "name": "id",
+            "type": "string"
+          },
+          {
+            "name": "result",
+            "type": "any"
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "bridgePush",
@@ -1633,26 +3097,49 @@
         "async": "promise",
         "description": "Push a message to canvas subscribers of an agent session",
         "parameters": [
-          { "name": "sessionId", "type": "string" },
-          { "name": "message", "type": "any" }
+          {
+            "name": "sessionId",
+            "type": "string"
+          },
+          {
+            "name": "message",
+            "type": "any"
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "setSidebarWidth",
         "type": "function",
         "async": "promise",
         "description": "Set the sidebar panel width in pixels",
-        "parameters": [{ "name": "width", "type": "integer" }],
-        "returns": { "$ref": "ApiResult" }
+        "parameters": [
+          {
+            "name": "width",
+            "type": "integer"
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "setAgentStatus",
         "type": "function",
         "async": "promise",
         "description": "Set the floating agent avatar state (idle|working|needs-you).",
-        "parameters": [{ "name": "state", "type": "string" }],
-        "returns": { "type": "object", "additionalProperties": true }
+        "parameters": [
+          {
+            "name": "state",
+            "type": "string"
+          }
+        ],
+        "returns": {
+          "type": "object",
+          "additionalProperties": true
+        }
       },
       {
         "name": "showAgentAvatar",
@@ -1660,15 +3147,26 @@
         "async": "promise",
         "description": "Show the floating agent avatar (minimized mode).",
         "parameters": [],
-        "returns": { "type": "object", "additionalProperties": true }
+        "returns": {
+          "type": "object",
+          "additionalProperties": true
+        }
       },
       {
         "name": "setAgentAvatarImage",
         "type": "function",
         "async": "promise",
         "description": "Set the floating agent avatar face image (Identity avatar dataURL, or empty for the branding logo fallback).",
-        "parameters": [{ "name": "url", "type": "string" }],
-        "returns": { "type": "object", "additionalProperties": true }
+        "parameters": [
+          {
+            "name": "url",
+            "type": "string"
+          }
+        ],
+        "returns": {
+          "type": "object",
+          "additionalProperties": true
+        }
       },
       {
         "name": "hideAgentAvatar",
@@ -1676,7 +3174,10 @@
         "async": "promise",
         "description": "Hide/remove the floating agent avatar.",
         "parameters": [],
-        "returns": { "type": "object", "additionalProperties": true }
+        "returns": {
+          "type": "object",
+          "additionalProperties": true
+        }
       },
       {
         "name": "getAgentAvatarPosition",
@@ -1684,7 +3185,13 @@
         "async": "promise",
         "description": "Read persisted avatar position, or null if unset.",
         "parameters": [],
-        "returns": { "type": ["object", "null"], "additionalProperties": true }
+        "returns": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        }
       },
       {
         "name": "setAgentAvatarPosition",
@@ -1692,10 +3199,19 @@
         "async": "promise",
         "description": "Persist avatar position.",
         "parameters": [
-          { "name": "x", "type": "number" },
-          { "name": "y", "type": "number" }
+          {
+            "name": "x",
+            "type": "number"
+          },
+          {
+            "name": "y",
+            "type": "number"
+          }
         ],
-        "returns": { "type": "object", "additionalProperties": true }
+        "returns": {
+          "type": "object",
+          "additionalProperties": true
+        }
       },
       {
         "name": "contentStoreGet",
@@ -1703,9 +3219,18 @@
         "async": "promise",
         "description": "Read a single key from the parent-process ContentStore mirror. Returns the stored value or null if the key is absent.",
         "parameters": [
-          { "name": "key", "type": "string" }
+          {
+            "name": "key",
+            "type": "string"
+          }
         ],
-        "returns": { "type": ["object", "null"], "additionalProperties": true }
+        "returns": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        }
       },
       {
         "name": "probe",
@@ -1713,9 +3238,21 @@
         "async": "promise",
         "description": "Probe an element and return its fingerprint",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "selector", "type": "string" },
-          { "name": "options", "type": "object", "optional": true, "additionalProperties": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "selector",
+            "type": "string"
+          },
+          {
+            "name": "options",
+            "type": "object",
+            "optional": true,
+            "additionalProperties": true
+          }
         ]
       },
       {
@@ -1724,10 +3261,25 @@
         "async": "promise",
         "description": "Inject text into a contentEditable target via synthetic ClipboardEvent",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "selector", "type": "string" },
-          { "name": "text", "type": "string" },
-          { "name": "options", "type": "object", "optional": true, "additionalProperties": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "selector",
+            "type": "string"
+          },
+          {
+            "name": "text",
+            "type": "string"
+          },
+          {
+            "name": "options",
+            "type": "object",
+            "optional": true,
+            "additionalProperties": true
+          }
         ]
       },
       {
@@ -1736,10 +3288,25 @@
         "async": "promise",
         "description": "Replace contentEditable content with new text (clear + paste)",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "selector", "type": "string" },
-          { "name": "text", "type": "string" },
-          { "name": "options", "type": "object", "optional": true, "additionalProperties": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "selector",
+            "type": "string"
+          },
+          {
+            "name": "text",
+            "type": "string"
+          },
+          {
+            "name": "options",
+            "type": "object",
+            "optional": true,
+            "additionalProperties": true
+          }
         ]
       },
       {
@@ -1748,11 +3315,27 @@
         "async": "promise",
         "description": "Upload a file to an input[type=file] element via localhost HTTP bridge",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "selector", "type": "string" },
-          { "name": "fileUrl", "type": "string" },
-          { "name": "fileName", "type": "string" },
-          { "name": "mimeType", "type": "string" }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "selector",
+            "type": "string"
+          },
+          {
+            "name": "fileUrl",
+            "type": "string"
+          },
+          {
+            "name": "fileName",
+            "type": "string"
+          },
+          {
+            "name": "mimeType",
+            "type": "string"
+          }
         ]
       },
       {
@@ -1761,9 +3344,21 @@
         "async": "promise",
         "description": "Query all elements matching a CSS selector; returns tag/id/text/visible/path_selector per match",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "selector", "type": "string" },
-          { "name": "options", "type": "object", "optional": true, "additionalProperties": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "selector",
+            "type": "string"
+          },
+          {
+            "name": "options",
+            "type": "object",
+            "optional": true,
+            "additionalProperties": true
+          }
         ]
       },
       {
@@ -1772,10 +3367,19 @@
         "async": "promise",
         "description": "Set the recording-active state for a tab's top BrowsingContext in the parent-process singleton",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "info", "type": "any" }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "info",
+            "type": "any"
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "clearRecordingState",
@@ -1783,9 +3387,15 @@
         "async": "promise",
         "description": "Clear the recording-active state for a tab's top BrowsingContext in the parent-process singleton",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          }
         ],
-        "returns": { "$ref": "ApiResult" }
+        "returns": {
+          "$ref": "ApiResult"
+        }
       },
       {
         "name": "getThemeContext",
@@ -1793,9 +3403,16 @@
         "async": "promise",
         "description": "Raw theme signals for the sidebar: color scheme from the Website-appearance pref, the active boost's color fields for the tab's domain, and the current space gradient primary color",
         "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true }
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          }
         ],
-        "returns": { "type": "object", "additionalProperties": true }
+        "returns": {
+          "type": "object",
+          "additionalProperties": true
+        }
       }
     ],
     "events": [
@@ -1804,9 +3421,19 @@
         "type": "function",
         "description": "Fired when ContentStore is mutated (set or delete)",
         "parameters": [
-          { "name": "operation", "type": "string" },
-          { "name": "key", "type": "string" },
-          { "name": "value", "type": "any", "optional": true }
+          {
+            "name": "operation",
+            "type": "string"
+          },
+          {
+            "name": "key",
+            "type": "string"
+          },
+          {
+            "name": "value",
+            "type": "any",
+            "optional": true
+          }
         ]
       },
       {
@@ -1814,9 +3441,19 @@
         "type": "function",
         "description": "Fired when a nevoflux:// page makes a bridge request (callTool, agent, sidebar)",
         "parameters": [
-          { "name": "id", "type": "string" },
-          { "name": "type", "type": "string" },
-          { "name": "payload", "type": "any", "optional": true }
+          {
+            "name": "id",
+            "type": "string"
+          },
+          {
+            "name": "type",
+            "type": "string"
+          },
+          {
+            "name": "payload",
+            "type": "any",
+            "optional": true
+          }
         ]
       },
       {
@@ -1824,8 +3461,14 @@
         "type": "function",
         "description": "Fired (one-way, no response) when chrome emits a recording event to background",
         "parameters": [
-          { "name": "type", "type": "string" },
-          { "name": "payload", "type": "any" }
+          {
+            "name": "type",
+            "type": "string"
+          },
+          {
+            "name": "payload",
+            "type": "any"
+          }
         ]
       },
       {

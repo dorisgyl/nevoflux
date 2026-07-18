@@ -26,8 +26,11 @@ pub use common::*;
 // Re-export chat types
 pub use chat::{
     ChatMessage, MessageDirection, ChatMode,
+    // Canonical "no container" cookieStoreId
+    DEFAULT_COOKIE_STORE_ID,
     // Sidebar -> Agent
-    TabReference, ChatMessagePayload, SkillCommandPayload, StopGenerationPayload, CancelPayload,
+    TabReference, SoulMention, ChatMessagePayload, SkillCommandPayload, StopGenerationPayload,
+    CancelPayload,
     PermissionResponsePayload, PluginCommandPayload, SystemCommandPayload,
     BrowserToolResponsePayload, BrowserToolError,
     // File picker (native dialog)
@@ -146,6 +149,7 @@ mod tests {
             content: "Hello".to_string(),
             attachments: vec![],
             tab_id: Some(123),
+            ..Default::default()
         });
         let json = serde_json::to_string(&msg).unwrap();
         let parsed: ChatMessage = serde_json::from_str(&json).unwrap();
@@ -187,6 +191,7 @@ mod tests {
             session_title: None,
             event: None,
             thinking_event: None,
+            ..Default::default()
         });
         let json = serde_json::to_string(&msg).unwrap();
         let parsed: ChatMessage = serde_json::from_str(&json).unwrap();
@@ -205,6 +210,7 @@ mod tests {
             content: "Hello".to_string(),
             attachments: vec![],
             tab_id: None,
+            ..Default::default()
         });
         assert_eq!(msg.direction(), MessageDirection::ToAgent);
 
@@ -216,6 +222,7 @@ mod tests {
             session_title: None,
             event: None,
             thinking_event: None,
+            ..Default::default()
         });
         assert_eq!(msg.direction(), MessageDirection::ToSidebar);
     }
@@ -230,6 +237,7 @@ mod tests {
             content: "Hello".to_string(),
             attachments: vec![],
             tab_id: None,
+            ..Default::default()
         });
         assert_eq!(msg.direction(), MessageDirection::ToAgent);
 
@@ -240,6 +248,7 @@ mod tests {
             session_title: None,
             event: None,
             thinking_event: None,
+            ..Default::default()
         });
         assert_eq!(msg.direction(), MessageDirection::ToSidebar);
     }
