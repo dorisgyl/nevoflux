@@ -100,6 +100,33 @@ export class NevofluxParent extends JSWindowActorParent {
       case 'dialogDismiss':
         return this.dismissDialog();
 
+      // Which Spaces exist and which container each uses. Settings needs this to
+      // offer "give this Space an assistant" in the user's own terms; the daemon
+      // only ever sees a cookieStoreId. This lives in the parent because the
+      // settings page is a chrome page with no `browser.*` WebExtension globals,
+      // and gZenWorkspaces is a chrome-window object it cannot reach directly.
+      //
+      // Reads the live spaces system (ZenSpaceManager, still exposed as
+      // `gZenWorkspaces`); `src/zen/workspaces/` is dead code.
+      case 'spaces:list': {
+        const win = Services.wm.getMostRecentWindow('navigator:browser');
+        const spaces = win?.gZenWorkspaces?.getWorkspaces?.() ?? [];
+        return spaces.map(space => {
+          // containerTabId is a userContextId; 0 (or unset) means the Space uses
+          // no container, which Firefox reports on tabs as 'firefox-default'.
+          const userContextId = Number(space.containerTabId) || 0;
+          return {
+            uuid: space.uuid,
+            name: space.name ?? '',
+            containerTabId: userContextId,
+            cookieStoreId:
+              userContextId === 0
+                ? 'firefox-default'
+                : `firefox-container-${userContextId}`,
+          };
+        });
+      }
+
       case 'canvasVideo:registerJob': {
         const jobId = data?.job_id;
         if (!jobId || typeof jobId !== 'string') {
@@ -423,7 +450,7 @@ export class NevofluxParent extends JSWindowActorParent {
       }
 
       case 'bridge:request': {
-        const { type, payload } = data;
+        const { type, payload, timeoutMs } = data;
         const me = this;
         const onPush = (msg) => {
           try {
@@ -433,7 +460,7 @@ export class NevofluxParent extends JSWindowActorParent {
           }
         };
         try {
-          const result = await lazy.NevofluxBridgeRouter.request(type, payload, onPush);
+          const result = await lazy.NevofluxBridgeRouter.request(type, payload, onPush, timeoutMs);
           return { success: true, data: result };
         } catch (e) {
           return { success: false, error: { code: 13001, message: e.message } };

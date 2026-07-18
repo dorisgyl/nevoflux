@@ -45,7 +45,7 @@ export const NevofluxBridgeRouter = {
    * subscription is auto-cleaned a grace period after the response arrives so
    * trailing events still reach the caller.
    */
-  request(type, payload, onPush) {
+  request(type, payload, onPush, timeoutMs) {
     if (!this._handler) {
       return Promise.reject(new Error('NevofluxBridgeRouter: no handler registered'));
     }
@@ -62,12 +62,17 @@ export const NevofluxBridgeRouter = {
         unsubPush = null;
       }
     };
+    // Most commands answer in well under the default; a slow one (e.g. an AI
+    // draft that streams from an ACP subprocess) can ask for more rather than
+    // making every request wait that long to fail.
+    const deadline =
+      Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : this.REQUEST_TIMEOUT_MS;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this._pending.delete(id);
         cleanupPush();
         reject(new Error(`Bridge request timeout: ${type}`));
-      }, this.REQUEST_TIMEOUT_MS);
+      }, deadline);
       this._pending.set(id, {
         resolve: (v) => { cleanupPush(); resolve(v); },
         reject: (e) => { cleanupPush(); reject(e); },

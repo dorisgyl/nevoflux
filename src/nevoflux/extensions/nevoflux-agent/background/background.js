@@ -570,15 +570,25 @@ async function loadTabSubscriptions(tabId) {
   }
 }
 
-// Cleanup stale pending agent commands after 30s
+// How long to wait for a system_command's response before giving up on it.
+// Most commands are quick RPCs; the ones that stream a whole model reply back
+// (an AI draft, which can crawl on a slow endpoint) need a much longer leash.
+const AGENT_COMMAND_TIMEOUT_MS = {
+  'soul.generate': 150000,
+};
+const DEFAULT_AGENT_COMMAND_TIMEOUT_MS = 30000;
+function agentCommandTimeoutMs(command) {
+  return AGENT_COMMAND_TIMEOUT_MS[command] ?? DEFAULT_AGENT_COMMAND_TIMEOUT_MS;
+}
+
+// Cleanup pending agent commands that outlive their per-command deadline.
 setInterval(() => {
   const now = Date.now();
-  for (const [reqId, bridgeId] of pendingAgentCommands) {
-    const ts = parseInt(reqId.split('_')[1], 10);
-    if (now - ts > 30000) {
+  for (const [reqId, entry] of pendingAgentCommands) {
+    if (now > entry.deadline) {
       pendingAgentCommands.delete(reqId);
       browser.nevoflux
-        .bridgeRespond(bridgeId, {
+        .bridgeRespond(entry.bridgeId, {
           success: false,
           error: { code: 'TIMEOUT', message: 'Agent command timed out' },
         })
@@ -1280,10 +1290,10 @@ class ChannelManager {
     // Intercept agent:command responses (bridge → agent → response)
     if (msgType === MessageTypes.SYSTEM_RESPONSE) {
       const reqId = message.payload?.request_id;
-      const bridgeId = pendingAgentCommands.get(reqId);
-      if (bridgeId) {
+      const entry = pendingAgentCommands.get(reqId);
+      if (entry) {
         pendingAgentCommands.delete(reqId);
-        browser.nevoflux.bridgeRespond(bridgeId, message.payload).catch((err) => {
+        browser.nevoflux.bridgeRespond(entry.bridgeId, message.payload).catch((err) => {
           console.error('[NevoFlux] agent:command bridgeRespond failed:', err);
         });
         // Cache status response for first-launch detection
@@ -2700,7 +2710,14 @@ if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onBridgeRequest)
           const { command, params: cmdParams } = payload;
           const requestId = `brcmd_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-          pendingAgentCommands.set(requestId, id);
+          // Most commands answer in well under 30s; a few stream a full model
+          // reply and can legitimately take much longer (an AI draft against a
+          // slow endpoint). Give those a longer leash before the stale-command
+          // sweeper gives up on them.
+          pendingAgentCommands.set(requestId, {
+            bridgeId: id,
+            deadline: Date.now() + agentCommandTimeoutMs(command),
+          });
 
           channelManager.sendToAgent({
             type: MessageTypes.SYSTEM_COMMAND,

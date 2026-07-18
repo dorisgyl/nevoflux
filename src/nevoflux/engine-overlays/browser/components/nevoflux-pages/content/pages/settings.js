@@ -943,8 +943,10 @@ const Settings = {
     }
 
     // Spaces come from chrome, not the daemon: it never learns their names.
+    // This is a chrome page with no `browser.*` globals, so it asks the parent
+    // actor (which can reach gZenWorkspaces) rather than a WebExtension API.
     try {
-      this._spaces = (await browser.nevoflux.getSpaces()) || [];
+      this._spaces = (await NevofluxPage.sendQuery('spaces:list')) || [];
     } catch (e) {
       console.warn('[NevoFlux] Could not list Spaces; showing containers only:', e);
       this._spaces = [];
@@ -1190,7 +1192,7 @@ const Settings = {
       this._soulBindings = data?.bindings || this._soulBindings;
       this._renderSoulBindings();
       this._renderSoulLibrary();
-      this._showSaved();
+      this._showSaveIndicator();
     } catch (e) {
       console.error('[NevoFlux] Could not bind soul:', e);
       // Redraw from what the daemon last told us, so the picker never shows a
@@ -1205,7 +1207,7 @@ const Settings = {
       this._soulBindings = data?.bindings || this._soulBindings;
       this._renderSoulBindings();
       this._renderSoulLibrary();
-      this._showSaved();
+      this._showSaveIndicator();
     } catch (e) {
       console.error('[NevoFlux] Could not remove binding:', e);
       this._renderSoulBindings();
@@ -1432,12 +1434,6 @@ const Settings = {
         placeholder: 'web_search\nbrain_*',
         hint: 'One per line, patterns allowed. Tools not listed are unavailable to this soul. Empty = all tools of the current mode.',
       },
-      {
-        key: 'subagents',
-        label: 'Delegates',
-        placeholder: 'researcher\nreader',
-        hint: 'Souls this one may hand work to, by folder name. Empty = any.',
-      },
     ]) {
       const field = document.createElement('div');
       field.className = 'adv-field';
@@ -1483,7 +1479,6 @@ const Settings = {
       tools: '',
       agents: '',
       allowed_tools: [],
-      subagents: [],
     };
 
     if (slug) {
@@ -1507,7 +1502,6 @@ const Settings = {
       document.getElementById(`soul-field-${field.key}`).value = soul[field.key] || '';
     }
     document.getElementById('soul-adv-allowed_tools').value = (soul.allowed_tools || []).join('\n');
-    document.getElementById('soul-adv-subagents').value = (soul.subagents || []).join('\n');
 
     // A soul that does not exist yet has nothing to delete, and no avatar to set:
     // both need a folder first.
@@ -1519,7 +1513,7 @@ const Settings = {
     }
     document.getElementById('soul-save-state').textContent = slug ? 'Saved' : '';
 
-    for (const section of document.querySelectorAll('#section-space-souls .settings-group')) {
+    for (const section of document.querySelectorAll('#section-space-souls > .settings-group')) {
       section.hidden = true;
     }
     editor.hidden = false;
@@ -1529,7 +1523,7 @@ const Settings = {
   _closeSoulEditor() {
     const editor = document.getElementById('soul-editor');
     if (editor) editor.hidden = true;
-    for (const section of document.querySelectorAll('#section-space-souls .settings-group')) {
+    for (const section of document.querySelectorAll('#section-space-souls > .settings-group')) {
       section.hidden = false;
     }
     this._editingSlug = null;
@@ -1548,7 +1542,6 @@ const Settings = {
       name: document.getElementById('soul-name').value,
       description: document.getElementById('soul-description').value,
       allowed_tools: document.getElementById('soul-adv-allowed_tools').value,
-      subagents: document.getElementById('soul-adv-subagents').value,
     };
     for (const field of this._soulFields) {
       fields[field.key] = document.getElementById(`soul-field-${field.key}`).value;
@@ -1581,7 +1574,7 @@ const Settings = {
     try {
       await this._sendAgentCommand('soul.write', { slug, ...fields });
       document.getElementById('soul-save-state').textContent = 'Saved';
-      this._showSaved();
+      this._showSaveIndicator();
     } catch (e) {
       // The daemon refuses a clashing or unmentionable name; say which, rather
       // than leaving Save looking like it worked.
@@ -1612,7 +1605,7 @@ const Settings = {
       const img = document.getElementById('soul-avatar-img');
       img.src = result?.avatar || dataUri;
       img.hidden = false;
-      this._showSaved();
+      this._showSaveIndicator();
     } catch (e) {
       this._showSoulEditorError(e?.message || 'That image could not be used.');
     } finally {
@@ -1659,11 +1652,18 @@ const Settings = {
     this._showSoulEditorError(null);
 
     try {
-      const result = await this._sendAgentCommand('soul.generate', {
-        target: key,
-        slug: this._editingSlug || undefined,
-        ...this._soulEditorFields(),
-      });
+      // Drafting streams a full reply from the model, which on a slow endpoint
+      // can take well over a minute. Keep this at or above the background
+      // stale-command deadline so the bridge does not give up first.
+      const result = await this._sendAgentCommand(
+        'soul.generate',
+        {
+          target: key,
+          slug: this._editingSlug || undefined,
+          ...this._soulEditorFields(),
+        },
+        150000
+      );
 
       const previous = area.value;
       area.value = result.content;
@@ -2309,8 +2309,8 @@ const Settings = {
     emptyState.style.display = hasItems ? 'none' : '';
   },
 
-  async _sendAgentCommand(command, params = {}) {
-    return this._sendMcpCommand(command, params);
+  async _sendAgentCommand(command, params = {}, timeoutMs) {
+    return this._sendMcpCommand(command, params, timeoutMs);
   },
 
   async _retryWithBackoff(fn, delays = [1000, 3000, 5000, 10000, 15000]) {
@@ -2424,11 +2424,12 @@ const Settings = {
     if (banner) banner.style.display = 'none';
   },
 
-  async _sendMcpCommand(command, params = {}) {
+  async _sendMcpCommand(command, params = {}, timeoutMs) {
     // NevofluxParent wraps the result: { success, data: <bridgeRespond payload> }
     const result = await NevofluxPage.sendQuery('bridge:request', {
       type: 'agent:command',
       payload: { command, params },
+      timeoutMs,
     });
     if (!result.success) {
       throw new Error(result.error?.message || 'Bridge request failed');
