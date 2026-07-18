@@ -131,14 +131,32 @@ pub fn Header() -> Element {
         tracing::info!("Schedule Jobs clicked (handled by sidebar-boot.js)");
     };
 
-    // Read avatar
-    let avatar = ctx.avatar_url.read();
+    // The header avatar wears the face of whoever answers in this Space: the
+    // Space's bound soul, or a temporary `@`-pick, falling back to the global
+    // identity avatar when nothing is bound. Reading these signals here means the
+    // face updates the moment the user switches Space (the container changes).
+    let avatar: Option<String> = {
+        let container = ctx.tab_context.read().cookie_store_id.clone();
+        let picked = ctx
+            .active_soul
+            .read()
+            .as_ref()
+            .and_then(|a| a.is_override.then(|| a.slug.clone()));
+        crate::state::soul::derive_active_soul(
+            &ctx.souls.read(),
+            &ctx.soul_bindings.read(),
+            &container,
+            picked.as_deref(),
+        )
+        .and_then(|a| a.avatar)
+        .or_else(|| ctx.avatar_url.read().clone())
+    };
 
     rsx! {
         header { class: "header",
-            // Left side: Avatar (shown when configured)
+            // Left side: Avatar (the current Space's soul, else global identity)
             div { class: "header-left",
-                if let Some(ref url) = *avatar {
+                if let Some(ref url) = avatar {
                     div { class: "header-avatar",
                         img {
                             src: "{url}",

@@ -73,6 +73,9 @@ const BackgroundAPI = {
 
   // Floating avatar control
   AGENT_MINIMIZE: 'bg:agent_minimize',
+  // Per-Space soul faces snapshot (sidebar → background), so the floating avatar
+  // can follow the active Space even while the sidebar is closed.
+  SPACE_FACES: 'bg:space_faces',
 
   // Tab management
   OPEN_TAB: 'bg:open_tab',
@@ -2107,10 +2110,11 @@ const AvatarController = {
     // fire-and-forget so show() stays synchronous; any failure resolves to ''
     // which lets the CSS branding-logo fallback apply.
     browser.nevoflux.setAgentAvatarImage(this._avatarImage || '').catch(() => {});
-    this.resolveIdentityAvatar().then((url) => {
-      this._avatarImage = url;
-      browser.nevoflux.setAgentAvatarImage(url || '').catch(() => {});
-    });
+    // Resolve the authoritative face for the current Space: its bound soul, or
+    // the Identity avatar when nothing is bound. Single source of truth — do NOT
+    // also resolve the Identity avatar here, or it races this and clobbers the
+    // soul face.
+    updateFloatingAvatarForActiveTab();
     this.keepaliveTimer = setInterval(() => {
       // Keepalive: any channel message resets the daemon's 30s idle timer.
       // A ping suffices; avatar state comes from the message stream, not this.
@@ -7857,11 +7861,27 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
           targetTabId: message.target_tab_id || 0,
         };
         AvatarController.show();
+        // The avatar just became visible; make sure it wears the current Space's
+        // soul face rather than whoever last answered.
+        updateFloatingAvatarForActiveTab();
         sendResponse({ success: true });
       } catch (err) {
         sendResponse({ success: false, error: err.message });
       }
       return true;
+
+    case BackgroundAPI.SPACE_FACES: {
+      // Snapshot of every Space's soul avatar, pushed by the sidebar whenever
+      // souls or bindings change. Cached so the floating avatar can follow the
+      // active Space while the sidebar is closed.
+      spaceSoulFaces = new Map((message.faces || []).map((f) => [f.container, f.avatar]));
+      spaceDefaultAvatar = message.default_avatar || '';
+      // Refresh now so the current Space's face is right without waiting for the
+      // next tab switch.
+      updateFloatingAvatarForActiveTab();
+      sendResponse({ success: true });
+      break;
+    }
 
     case BackgroundAPI.SIDEBAR_SET_WIDTH:
       // Fallback: try browser.nevoflux API (requires browser rebuild with new schema)
@@ -8318,6 +8338,35 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
 // Event Listeners
 // =============================================================================
 
+// Per-Space soul faces: container (cookieStoreId) → soul avatar (data URI).
+// Pushed from the sidebar via bg:space_faces. The floating avatar is shown while
+// the sidebar is minimized — exactly when the sidebar isn't running to react to
+// a Space switch — so the background looks the face up here on every tab switch.
+let spaceSoulFaces = new Map();
+let spaceDefaultAvatar = '';
+
+// Point the floating avatar at whichever soul is bound to the active tab's Space,
+// falling back to the global identity avatar for unbound Spaces. `context` is the
+// already-fetched tab context when the caller has one, else we fetch it.
+async function updateFloatingAvatarForActiveTab(context) {
+  try {
+    const ctx = context || (await getActiveTabContext());
+    const container = ctx?.cookie_store_id || DEFAULT_COOKIE_STORE_ID;
+    const face = spaceSoulFaces.get(container);
+    if (face) {
+      AvatarController.setAvatarImage(face);
+      return;
+    }
+    // No soul bound to this Space: fall back to the user's global Identity
+    // avatar (resolved live from the ContentStore, freshest source), then the
+    // snapshot the sidebar pushed, then the CSS branding logo.
+    const identity = await AvatarController.resolveIdentityAvatar().catch(() => '');
+    AvatarController.setAvatarImage(identity || spaceDefaultAvatar || '');
+  } catch (e) {
+    console.warn('[NevoFlux] Could not update floating avatar for active tab:', e);
+  }
+}
+
 // Store listener references for cleanup to prevent memory leaks
 const tabEventListeners = {
   onActivated: null,
@@ -8331,6 +8380,10 @@ tabEventListeners.onActivated = async (activeInfo) => {
     type: MessageTypes.TAB_CONTEXT_UPDATE,
     payload: context,
   });
+
+  // Switching tabs in Zen is how you switch Space; keep the floating avatar's
+  // face in step with the newly-active Space's bound soul.
+  updateFloatingAvatarForActiveTab(context);
 
   // Publish ui:tab:focused on EventBus so /loop event:ui:tab:focused triggers fire.
   // Topic chosen to mirror dom-watcher's ui:tab:* namespace.

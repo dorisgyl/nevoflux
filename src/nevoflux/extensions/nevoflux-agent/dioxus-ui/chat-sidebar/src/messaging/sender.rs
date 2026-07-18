@@ -38,6 +38,43 @@ pub enum BackgroundRequest {
     /// Open artifact in canvas tab
     #[serde(rename = "bg:open_artifact")]
     OpenArtifact { id: String },
+    /// Cache the per-Space soul faces so the floating (minimized) avatar can
+    /// follow the active Space even while the sidebar is closed (the sidebar,
+    /// which owns this data, is gone by then — so it pushes a snapshot first).
+    #[serde(rename = "bg:space_faces")]
+    SpaceFaces {
+        faces: Vec<SpaceFace>,
+        default_avatar: Option<String>,
+    },
+}
+
+/// One Space's soul face: the Space's container and the soul's inlined avatar.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SpaceFace {
+    pub container: String,
+    pub avatar: String,
+}
+
+/// Cache the per-Space soul faces in the background script (fire-and-forget).
+///
+/// The floating avatar is shown by the background while the sidebar is
+/// minimized — exactly when the sidebar (which holds souls + bindings) is not
+/// running to react to a Space switch. So the sidebar pushes a snapshot here,
+/// and the background looks up the active tab's container on every tab switch.
+pub async fn send_space_faces(
+    faces: Vec<SpaceFace>,
+    default_avatar: Option<String>,
+) -> Result<(), String> {
+    let request = BackgroundRequest::SpaceFaces {
+        faces,
+        default_avatar,
+    };
+    let js_value =
+        to_js_value(&request).map_err(|e| format!("Serialize request error: {:?}", e))?;
+    JsFuture::from(runtime_send_message(js_value))
+        .await
+        .map_err(|e| format!("Send failed: {:?}", e))?;
+    Ok(())
 }
 
 /// Response from bg:exec_tool

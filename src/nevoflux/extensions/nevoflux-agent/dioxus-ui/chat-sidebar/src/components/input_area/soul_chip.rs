@@ -36,6 +36,13 @@ pub fn SoulChip() -> Element {
         return rsx! {};
     };
 
+    // The Space's own soul now shows in the header avatar. The chip is reserved
+    // for a temporary `@`-pick — a choice the user made this turn and can undo —
+    // so a plain binding (no override) shows nothing here anymore.
+    if !active.is_override {
+        return rsx! {};
+    }
+
     let session_id = ctx.session.read().id.clone();
     let mode = ctx.chat_mode.read().clone();
 

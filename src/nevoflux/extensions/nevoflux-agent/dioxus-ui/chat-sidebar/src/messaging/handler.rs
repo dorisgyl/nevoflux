@@ -1086,6 +1086,37 @@ fn handle_skills_update_request(
 // System Response Handler
 // ============================================
 
+/// Push a snapshot of every Space's soul avatar to the background, so the
+/// floating (minimized) avatar can wear the right face when the user switches
+/// Space while the sidebar is closed. Cheap enough to re-send whenever souls or
+/// bindings change; only bound souls that actually have an avatar are included,
+/// everything else falls back to the global identity avatar.
+fn push_space_faces(ctx: &AppContext) {
+    let faces: Vec<crate::messaging::SpaceFace> = {
+        let souls = ctx.souls.read();
+        let bindings = ctx.soul_bindings.read();
+        bindings
+            .iter()
+            .filter_map(|(container, slug)| {
+                souls
+                    .iter()
+                    .find(|s| &s.slug == slug)
+                    .and_then(|s| s.avatar.clone())
+                    .map(|avatar| crate::messaging::SpaceFace {
+                        container: container.clone(),
+                        avatar,
+                    })
+            })
+            .collect()
+    };
+    let default_avatar = ctx.avatar_url.read().clone();
+    wasm_bindgen_futures::spawn_local(async move {
+        if let Err(e) = crate::messaging::send_space_faces(faces, default_avatar).await {
+            tracing::warn!("Could not push Space soul faces to background: {}", e);
+        }
+    });
+}
+
 fn handle_system_response(mut ctx: AppContext, payload: SystemResponsePayload) {
     tracing::debug!("Received system response for command: {}", payload.command);
 
@@ -1100,6 +1131,7 @@ fn handle_system_response(mut ctx: AppContext, payload: SystemResponsePayload) {
                 {
                     tracing::info!("[Sidebar] {} soul(s) available", souls.len());
                     ctx.souls.set(souls);
+                    push_space_faces(&ctx);
                 }
             } else {
                 tracing::error!("soul.list failed: {:?}", payload.error);
@@ -1120,6 +1152,7 @@ fn handle_system_response(mut ctx: AppContext, payload: SystemResponsePayload) {
                     })
                 {
                     ctx.soul_bindings.set(bindings);
+                    push_space_faces(&ctx);
                 }
             } else {
                 tracing::error!("{} failed: {:?}", payload.command, payload.error);
