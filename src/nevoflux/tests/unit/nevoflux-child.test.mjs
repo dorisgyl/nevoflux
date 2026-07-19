@@ -112,9 +112,21 @@ class MockNevofluxChild {
 
   // ========== Shadow-piercing query helpers ==========
   // Mirror of the real NevofluxChild implementation. A flat querySelector()
-  // stops at every open shadow boundary; these descend open shadow roots so
-  // selector resolution (probe/click/input/data-ai-id) can reach editors that
-  // sites render inside web components (e.g. LinkedIn's Quill composer).
+  // stops at every open shadow boundary; these descend shadow roots (open AND
+  // closed via _shadowRootOf) so selector resolution (probe/click/input/
+  // data-ai-id) can reach editors that sites render inside web components
+  // (e.g. LinkedIn's Quill composer, or its closed-root app shell).
+  _shadowRootOf(el) {
+    if (!el) {
+      return null;
+    }
+    try {
+      return el.openOrClosedShadowRoot || el.shadowRoot || null;
+    } catch {
+      return el.shadowRoot || null;
+    }
+  }
+
   _deepQuerySelector(selector, doc = this.currentDoc) {
     if (!doc || !selector) {
       return null;
@@ -138,7 +150,7 @@ class MockNevofluxChild {
         continue;
       }
       for (const el of all) {
-        const sr = el.shadowRoot;
+        const sr = this._shadowRootOf(el);
         if (!sr) {
           continue;
         }
@@ -174,7 +186,7 @@ class MockNevofluxChild {
         continue;
       }
       for (const el of all) {
-        const sr = el.shadowRoot;
+        const sr = this._shadowRootOf(el);
         if (!sr) {
           continue;
         }
@@ -212,6 +224,14 @@ class MockNevofluxChild {
     if (node.nodeType !== 1) {
       return node.cloneNode(true);
     }
+    // Skip unrendered (display:none) subtrees — mirror of the real
+    // implementation; no-ops on mock nodes without ownerGlobal.
+    try {
+      const win = node.ownerGlobal || node.ownerDocument?.defaultView;
+      if (win && win.getComputedStyle(node)?.display === 'none') {
+        return node.ownerDocument.createDocumentFragment();
+      }
+    } catch {}
     if (node.localName === 'slot' && typeof node.assignedNodes === 'function') {
       const frag = node.ownerDocument.createDocumentFragment();
       let assigned = [];
@@ -225,7 +245,8 @@ class MockNevofluxChild {
       return frag;
     }
     const clone = node.cloneNode(false);
-    const kids = node.shadowRoot ? node.shadowRoot.childNodes : node.childNodes;
+    const sr = this._shadowRootOf(node);
+    const kids = sr ? sr.childNodes : node.childNodes;
     for (const child of kids) {
       clone.appendChild(this._cloneForMarkdown(child));
     }
@@ -238,8 +259,10 @@ class MockNevofluxChild {
   _deepActiveElement(doc = this.currentDoc) {
     let active = doc?.activeElement || null;
     try {
-      while (active?.shadowRoot?.activeElement) {
-        active = active.shadowRoot.activeElement;
+      let sr = this._shadowRootOf(active);
+      while (sr?.activeElement) {
+        active = sr.activeElement;
+        sr = this._shadowRootOf(active);
       }
     } catch {}
     return active;
@@ -2661,8 +2684,16 @@ describe('NevofluxChild — type() undefined-prefix regression', () => {
 
 const BAD_SELECTOR = '###throws';
 
-function fakeNode(selectors, { shadowRoot = null, children = [] } = {}) {
-  return { _sel: selectors, _children: children, shadowRoot };
+function fakeNode(selectors, { shadowRoot = null, closedShadowRoot = null, children = [] } = {}) {
+  return {
+    _sel: selectors,
+    _children: children,
+    shadowRoot,
+    // Mirrors the ChromeOnly Element.openOrClosedShadowRoot: privileged code
+    // sees open AND closed roots; content-visible .shadowRoot stays null for
+    // closed ones.
+    openOrClosedShadowRoot: shadowRoot || closedShadowRoot,
+  };
 }
 
 function fakeRoot(children) {
@@ -2722,6 +2753,30 @@ describe('NevofluxChild - Shadow-piercing resolution', () => {
     const outerHost = fakeNode(['div.outer'], { shadowRoot: fakeRoot([innerHost]) });
     const doc = fakeRoot([outerHost]);
     expect(child._deepQuerySelector('.ql-editor', doc)).toBe(editor);
+  });
+
+  it('_deepQuerySelector pierces a CLOSED shadow root (LinkedIn app shell)', () => {
+    // The 2026 logged-in LinkedIn shell renders the whole page inside CLOSED
+    // roots: el.shadowRoot is null, only the ChromeOnly openOrClosedShadowRoot
+    // sees them. A .shadowRoot-only walk finds nothing.
+    const post = fakeNode(['.feed-post']);
+    const component = fakeNode(['div.component'], { closedShadowRoot: fakeRoot([post]) });
+    const appHost = fakeNode(['div.theme--light'], { shadowRoot: fakeRoot([component]) });
+    const doc = fakeRoot([appHost]);
+
+    expect(component.shadowRoot).toBe(null); // content JS is blind
+    expect(child._deepQuerySelector('.feed-post', doc)).toBe(post); // privileged walk sees it
+  });
+
+  it('_cloneForMarkdown walks into a CLOSED shadow root via _shadowRootOf', () => {
+    // _cloneForMarkdown needs real DOM primitives; assert the traversal
+    // decision directly: the resolved root for a closed-root host must be the
+    // closed root, not the (null) .shadowRoot / light children.
+    const closed = fakeRoot([fakeNode(['.content'])]);
+    const host = fakeNode(['div.host'], { closedShadowRoot: closed });
+    expect(host.shadowRoot).toBe(null);
+    expect(child._shadowRootOf(host)).toBe(closed);
+    expect(child._shadowRootOf(null)).toBe(null);
   });
 
   it('_deepQuerySelector returns null when nothing matches anywhere', () => {

@@ -825,11 +825,12 @@ export class NevofluxChild extends JSWindowActorChild {
         return; // Skip entire subtree
       }
 
-      // Shadow DOM: targeted probe
-      if (node.shadowRoot) {
+      // Shadow DOM: targeted probe (open + closed roots via _shadowRootOf)
+      const nodeShadow = this._shadowRootOf(node);
+      if (nodeShadow) {
         try {
           const probe = 'a,button,input,select,textarea,[role],[tabindex],[contenteditable]';
-          const candidates = node.shadowRoot.querySelectorAll(probe);
+          const candidates = nodeShadow.querySelectorAll(probe);
           let hasUnknown = false;
           for (const el of candidates) {
             if (!seenNodes.has(el)) {
@@ -838,7 +839,7 @@ export class NevofluxChild extends JSWindowActorChild {
             }
           }
           if (hasUnknown) {
-            for (const child of node.shadowRoot.children) walk(child);
+            for (const child of nodeShadow.children) walk(child);
           }
         } catch {}
       }
@@ -2020,12 +2021,44 @@ export class NevofluxChild extends JSWindowActorChild {
   // invisible to every selector-resolution path: probe, click, input, type,
   // waitForSelector and the data-ai-id snapshot lookup all silently return
   // "not found". These helpers try the fast light-DOM query first, then
-  // breadth-first descend every open shadowRoot and retry the selector inside
-  // each one.
+  // breadth-first descend every shadowRoot (open AND closed, via
+  // _shadowRootOf) and retry the selector inside each one.
   //
   // NOTE: a selector is matched WITHIN each shadow root, so a descendant
   // combinator can't span a host boundary (per the CSS scoping spec). Pass the
   // editor's own compound selector (".ql-editor"), not a light-DOM-rooted path.
+
+  // Privileged shadow-root accessor. `element.shadowRoot` is null for CLOSED
+  // shadow roots — and LinkedIn's logged-in app shell (2026) renders its
+  // ENTIRE page inside closed roots nested under one open host, so a
+  // .shadowRoot-only walk sees an empty app container: getMarkdown returned
+  // only the stale previous-page markup left in the light DOM, and selectors
+  // couldn't reach anything on screen. This actor runs privileged, so use the
+  // ChromeOnly Element.openOrClosedShadowRoot (same door DevTools uses) and
+  // fall back to .shadowRoot where it's unavailable (tests, non-elements).
+  _shadowRootOf(el) {
+    if (!el) {
+      return null;
+    }
+    let sr = null;
+    let closed = false;
+    try {
+      sr = el.openOrClosedShadowRoot || null;
+      closed = !!sr && !el.shadowRoot;
+    } catch {}
+    if (!sr) {
+      sr = el.shadowRoot || null;
+    }
+    // Diagnostic counters, only while getMarkdown is flattening (see there).
+    if (sr && this._shadowStats) {
+      if (closed) {
+        this._shadowStats.closed++;
+      } else {
+        this._shadowStats.open++;
+      }
+    }
+    return sr;
+  }
 
   _deepQuerySelector(selector, doc = this.currentDoc) {
     if (!doc || !selector) {
@@ -2050,7 +2083,7 @@ export class NevofluxChild extends JSWindowActorChild {
         continue;
       }
       for (const el of all) {
-        const sr = el.shadowRoot;
+        const sr = this._shadowRootOf(el);
         if (!sr) {
           continue;
         }
@@ -2086,7 +2119,7 @@ export class NevofluxChild extends JSWindowActorChild {
         continue;
       }
       for (const el of all) {
-        const sr = el.shadowRoot;
+        const sr = this._shadowRootOf(el);
         if (!sr) {
           continue;
         }
@@ -2131,8 +2164,10 @@ export class NevofluxChild extends JSWindowActorChild {
   _deepActiveElement(doc = this.currentDoc) {
     let active = doc?.activeElement || null;
     try {
-      while (active?.shadowRoot?.activeElement) {
-        active = active.shadowRoot.activeElement;
+      let sr = this._shadowRootOf(active);
+      while (sr?.activeElement) {
+        active = sr.activeElement;
+        sr = this._shadowRootOf(active);
       }
     } catch {}
     return active;
@@ -3177,7 +3212,7 @@ export class NevofluxChild extends JSWindowActorChild {
           continue;
         }
         for (const elx of all) {
-          const sr = elx.shadowRoot;
+          const sr = this._shadowRootOf(elx);
           if (!sr) {
             continue;
           }
@@ -5169,16 +5204,30 @@ export class NevofluxChild extends JSWindowActorChild {
    * @param {boolean} options.includeLinks - Whether to preserve links (default: true)
    * @param {boolean} options.removeNavigation - Whether to remove nav/header/footer (default: true)
    */
-  // Build a detached clone of `node` flattening the COMPOSED tree: open shadow
-  // roots are inlined and <slot>s are replaced by their assigned light nodes, so
-  // content rendered inside web components (a shadow-DOM modal/editor) is
-  // captured. Node.cloneNode(true) does NOT copy shadowRoots, leaving markdown
-  // extraction blind to all shadow content.
+  // Build a detached clone of `node` flattening the COMPOSED tree: shadow
+  // roots (open AND closed, via the privileged _shadowRootOf) are inlined and
+  // <slot>s are replaced by their assigned light nodes, so content rendered
+  // inside web components (a shadow-DOM modal/editor, or LinkedIn's closed-root
+  // app shell) is captured. Node.cloneNode(true) does NOT copy shadowRoots,
+  // leaving markdown extraction blind to all shadow content.
   _cloneForMarkdown(node) {
     // Non-element nodes (text, comments, etc.): plain deep clone.
     if (node.nodeType !== 1) {
       return node.cloneNode(true);
     }
+
+    // Skip subtrees that are not rendered at all (computed display:none).
+    // This must be checked here, on the LIVE node — the clone is detached and
+    // has no computed style. Concretely: LinkedIn hides megabytes of raw JSON
+    // "data island" <code> elements with display:none; without this check they
+    // flood the markdown (~800K chars of API payloads on a company page).
+    // visibility:hidden is NOT skipped — descendants can override it visible.
+    try {
+      const win = node.ownerGlobal || node.ownerDocument?.defaultView;
+      if (win && win.getComputedStyle(node)?.display === 'none') {
+        return node.ownerDocument.createDocumentFragment();
+      }
+    } catch {}
 
     // <slot>: replace with its flattened assigned light nodes (or, if nothing is
     // assigned, the slot's own fallback content).
@@ -5197,9 +5246,11 @@ export class NevofluxChild extends JSWindowActorChild {
 
     const clone = node.cloneNode(false);
 
-    // Element with an OPEN shadow root: render the shadow tree in place of the
-    // host's own light children (the shadow tree's <slot>s pull those back in).
-    const kids = node.shadowRoot ? node.shadowRoot.childNodes : node.childNodes;
+    // Element with a shadow root (open or closed — closed needs the privileged
+    // _shadowRootOf accessor): render the shadow tree in place of the host's
+    // own light children (the shadow tree's <slot>s pull those back in).
+    const sr = this._shadowRootOf(node);
+    const kids = sr ? sr.childNodes : node.childNodes;
     for (const child of kids) {
       clone.appendChild(this._cloneForMarkdown(child));
     }
@@ -5228,10 +5279,17 @@ export class NevofluxChild extends JSWindowActorChild {
       // rendered inside web components — a modal/editor living in an open shadow
       // root (e.g. LinkedIn's Quill composer) produced empty markdown, leaving
       // the agent unable to verify content it had typed. _cloneForMarkdown inlines
-      // open shadow roots and resolves <slot>s so that content is captured.
+      // shadow roots (open and closed) and resolves <slot>s so that content is
+      // captured.
       // (Returns a detached <html> element; querySelector/All work on it, and the
       // body is reached via querySelector('body') below.)
+      this._shadowStats = { open: 0, closed: 0 };
       const docClone = this._cloneForMarkdown(doc.documentElement);
+      const shadowStats = this._shadowStats;
+      this._shadowStats = null;
+      console.log(
+        `[NevofluxChild.getMarkdown] shadow pierced: open=${shadowStats.open} closed=${shadowStats.closed}, flattenedTextLen=${(docClone.textContent || '').length}`
+      );
 
       // Remove script/style/meta tags
       const junkTags = ['script', 'noscript', 'style', 'link', 'meta', 'template', 'svg'];
