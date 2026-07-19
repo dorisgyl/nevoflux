@@ -22,17 +22,43 @@ cd $CURRENT_DIR
 
 LAST_FIREFOX_L10N_COMMIT=$(cat ./build/firefox-cache/l10n-last-commit-hash)
 
+# Self-hosted runners on this network see intermittent TLS handshake /
+# connection-timeout failures reaching github.com. A single failed `git
+# clone`/`git fetch` here used to be fatal (no retry, and `set -e` wasn't
+# even active yet), which surfaced later as a confusing rsync "No such
+# file or directory" (exit 23) instead of a clear network-retry failure.
+# Retry with backoff before giving up.
+retry_git() {
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    if "$@"; then
+      return 0
+    fi
+    if [ "$attempt" -lt 5 ]; then
+      echo "::warning::git command failed (attempt $attempt/5): $*. Retrying in $((attempt * 15))s..."
+      sleep $((attempt * 15))
+    fi
+  done
+  return 1
+}
+
 cd ./locales
 if [ -d "firefox-l10n/.git" ]; then
   echo "firefox-l10n already cloned, fetching updates..."
   cd firefox-l10n
-  git fetch --depth 1 origin $LAST_FIREFOX_L10N_COMMIT || echo "Warning: git fetch failed, using existing local data"
+  retry_git git fetch --depth 1 origin $LAST_FIREFOX_L10N_COMMIT || echo "Warning: git fetch failed after retries, using existing local data"
 else
   rm -rf firefox-l10n
-  git clone --depth 1 https://github.com/mozilla-l10n/firefox-l10n
+  if ! retry_git git clone --depth 1 https://github.com/mozilla-l10n/firefox-l10n; then
+    echo "::error::Failed to clone mozilla-l10n/firefox-l10n after 5 attempts"
+    exit 1
+  fi
   cd firefox-l10n
   # Fetch the specific commit needed (shallow clone only has HEAD)
-  git fetch --depth 1 origin $LAST_FIREFOX_L10N_COMMIT
+  if ! retry_git git fetch --depth 1 origin $LAST_FIREFOX_L10N_COMMIT; then
+    echo "::error::Failed to fetch commit $LAST_FIREFOX_L10N_COMMIT after 5 attempts"
+    exit 1
+  fi
 fi
 git checkout $LAST_FIREFOX_L10N_COMMIT
 cd $CURRENT_DIR
