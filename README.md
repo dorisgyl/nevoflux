@@ -411,6 +411,52 @@ API keys are resolved in order: environment variables → system keychain → co
 > Then go to `nevoflux://settings` → AI Models → click the **Claude Code** card and configure it.
 </details>
 
+<details open>
+<summary><strong>Q: How do I connect Antigravity (agy) as a coding agent?</strong></summary>
+
+> Google's `agy` CLI doesn't speak ACP directly, so you need the community `antigravity-acp` adapter binary on your PATH, named exactly `antigravity-acp` (`antigravity-acp.exe` on Windows). All assets: [releases page](https://github.com/shubzkothekar/antigravity-acp/releases). Pick your platform:
+>
+> **macOS (Apple Silicon):**
+> ```bash
+> curl -fsSL -o antigravity-acp https://github.com/shubzkothekar/antigravity-acp/releases/download/v1.0.0/agy-acp-darwin-arm64
+> chmod +x antigravity-acp && mv antigravity-acp /usr/local/bin/antigravity-acp
+> ```
+>
+> **macOS (Intel):**
+> ```bash
+> curl -fsSL -o antigravity-acp https://github.com/shubzkothekar/antigravity-acp/releases/download/v1.0.0/agy-acp-darwin-x64
+> chmod +x antigravity-acp && mv antigravity-acp /usr/local/bin/antigravity-acp
+> ```
+>
+> **Linux (x86-64):**
+> ```bash
+> curl -fsSL -o antigravity-acp https://github.com/shubzkothekar/antigravity-acp/releases/download/v1.0.0/agy-acp-linux-x64
+> chmod +x antigravity-acp && mv antigravity-acp ~/.local/bin/antigravity-acp   # must resolve on PATH
+> ```
+>
+> **Linux (ARM64):**
+> ```bash
+> curl -fsSL -o antigravity-acp https://github.com/shubzkothekar/antigravity-acp/releases/download/v1.0.0/agy-acp-linux-arm64
+> chmod +x antigravity-acp && mv antigravity-acp ~/.local/bin/antigravity-acp
+> ```
+>
+> **Windows (x86-64, PowerShell):**
+> ```powershell
+> Invoke-WebRequest -Uri https://github.com/shubzkothekar/antigravity-acp/releases/download/v1.0.0/agy-acp-windows-x64.exe -OutFile antigravity-acp.exe
+> Move-Item antigravity-acp.exe "$env:LOCALAPPDATA\Microsoft\WindowsApps\antigravity-acp.exe"   # on PATH by default
+> ```
+>
+> **Windows (ARM64, PowerShell):**
+> ```powershell
+> Invoke-WebRequest -Uri https://github.com/shubzkothekar/antigravity-acp/releases/download/v1.0.0/agy-acp-windows-arm64.exe -OutFile antigravity-acp.exe
+> Move-Item antigravity-acp.exe "$env:LOCALAPPDATA\Microsoft\WindowsApps\antigravity-acp.exe"
+> ```
+>
+> Confirm it resolves with `which antigravity-acp` (macOS/Linux) or `Get-Command antigravity-acp` (Windows). The adapter auto-downloads `agy` itself on first run if it isn't already installed. Then go to `nevoflux://settings` → AI Models → click the **Antigravity** card and configure it.
+>
+> ⚠️ Google's Antigravity Terms of Service treat third-party ACP tools driving `agy` as a violation that can risk account suspension — see the adapter's [README](https://github.com/shubzkothekar/antigravity-acp#%EF%B8%8F-terms-of-service-risk) before using this with a personal account.
+</details>
+
 ---
 
 ## Contributing
