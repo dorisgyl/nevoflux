@@ -1566,6 +1566,50 @@ jobs:
             'C:\Program Files (x86)\NSIS'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
+      - name: Resolve VC_PATH (pin to the VS instance with the ARM64+ATL workload)
+        shell: pwsh
+        # This runner has TWO Visual Studio installs: "VS 2022 Community"
+        # (has the ARM64 C++ + ATL.ARM64 workload) and a separately-installed
+        # "VS 2022 Build Tools" (numerically HIGHER installationVersion, but
+        # WITHOUT the ARM64 workload). build/moz.configure/windows-toolchain
+        # .configure's get_vc_paths() enumerates every VS instance satisfying
+        # the host x86.x64 requirement and picks whichever has the highest
+        # raw installationVersion -- that's Build Tools, not Community, even
+        # though `vswhere -latest` (used by the "Verify ARM64 VC build tools"
+        # step in `prepare`) picks Community. Target=aarch64 configure then
+        # probes Build Tools' Hostx64\arm64\cl.exe, which doesn't exist, and
+        # dies with the generic "Cannot find a Visual C++ install for e.g.
+        # ATL headers." (The preceding "mach taskgraph failed in toolchain.py"
+        # warning is a separate, harmless, EXPECTED failure of the winsysroot
+        # auto-bootstrap path on this offline runner -- same root cause
+        # already worked around for clang-20/cbindgen/7zz above. configure
+        # correctly falls through from that warning to the vswhere-based
+        # scan; THAT's where the wrong-instance selection happens.)
+        #
+        # Fix: explicitly resolve the VS instance that actually has the
+        # ARM64 + ATL.ARM64 components and pin it via VC_PATH, which
+        # short-circuits get_vc_paths()'s ambiguous max-version-sort
+        # entirely (build/moz.configure/windows-toolchain.configure:138).
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstall = & $vswhere -latest -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.ARM64 Microsoft.VisualStudio.Component.VC.ATL.ARM64 `
+            -property installationPath
+          if (-not $vsInstall) {
+            Write-Error "No VS instance found with the ARM64 C++ + ATL.ARM64 workload"
+            exit 1
+          }
+          $verFile = Join-Path $vsInstall 'VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt'
+          $ver = (Get-Content -Raw $verFile).Trim()
+          $vcPath = Join-Path $vsInstall "VC\Tools\MSVC\$ver"
+          $arm64Cl = Join-Path $vcPath 'bin\Hostx64\arm64\cl.exe'
+          if (-not (Test-Path $arm64Cl)) {
+            Write-Error "Resolved VC_PATH ($vcPath) still missing Hostx64\arm64\cl.exe"
+            exit 1
+          }
+          Write-Host "Pinning VC_PATH -> $vcPath"
+          Add-Content -Path $env:GITHUB_ENV -Value "VC_PATH=$vcPath"
+
       - name: Swap per-arch agent into AppDir/distribution/bin (aarch64)
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         # See x64-stage1 swap-step comment for rationale.
