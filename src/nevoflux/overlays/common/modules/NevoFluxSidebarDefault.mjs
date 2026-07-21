@@ -49,3 +49,57 @@ export function decideSidebarAction(state) {
   }
   return { action: 'none', markFirstRun: false };
 }
+
+const PREF_BEHAVIOR = 'extensions.nevoflux.sidebar.behavior';
+const PREF_FIRST_RUN = 'extensions.nevoflux.sidebar.firstRunDone';
+// Chrome-side command id of the NevoFlux extension sidebar panel (same constant
+// as NevoFluxAgentAvatar.mjs): makeWidgetId('agent@nevoflux.com') + '-sidebar-action'.
+const NEVOFLUX_SIDEBAR_ID = 'agent_nevoflux_com-sidebar-action';
+
+function applySidebarDefault() {
+  const sc = window.SidebarController;
+  if (!sc) return;
+
+  let behavior = 'default';
+  let firstRunDone = false;
+  try {
+    behavior = Services.prefs.getStringPref(PREF_BEHAVIOR, 'default');
+    firstRunDone = Services.prefs.getBoolPref(PREF_FIRST_RUN, false);
+  } catch (_e) {}
+
+  const decision = decideSidebarAction({
+    behavior,
+    firstRunDone,
+    isOpen: !!sc.isOpen,
+    currentID: sc.currentID || null,
+    nevofluxSidebarId: NEVOFLUX_SIDEBAR_ID,
+  });
+
+  try {
+    if (decision.action === 'show') {
+      sc.show(NEVOFLUX_SIDEBAR_ID);
+    } else if (decision.action === 'hide') {
+      sc.hide();
+    }
+  } catch (_e) {}
+
+  if (decision.markFirstRun) {
+    try {
+      Services.prefs.setBoolPref(PREF_FIRST_RUN, true);
+    } catch (_e) {}
+  }
+}
+
+// Apply after the window's own session restore has settled. `load` mirrors the
+// timing NevoFluxSidebarResize uses; SidebarController state is populated by then.
+// Guarded so importing this module for unit tests (Node, no DOM) is side-effect
+// free — only the pure decideSidebarAction export is exercised there.
+if (typeof document !== 'undefined' && typeof window !== 'undefined') {
+  document.addEventListener(
+    'MozBeforeInitialXULLayout',
+    () => {
+      window.addEventListener('load', () => applySidebarDefault(), { once: true });
+    },
+    { once: true }
+  );
+}
