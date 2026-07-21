@@ -159,11 +159,15 @@ const Settings = {
       this._createSelectRow(
         'Agent execution',
         'general.agentExecution',
+        // Canonical tiers + migration: agent-execution-tiers.mjs (node-tested).
+        // Ascending privilege; each tier auto-approves cumulatively more.
         [
-          ['confirm', 'Confirm before actions'],
-          ['auto', 'Auto-execute'],
+          ['read-only', 'Read-only'],
+          ['browser-auto', 'Browser auto'],
+          ['browser-auto-local-read', 'Browser auto + reads'],
+          ['full-auto', 'Full auto'],
         ],
-        'confirm'
+        'read-only'
       )
     );
     sidebarGroup.appendChild(
@@ -3617,7 +3621,29 @@ const Settings = {
     } catch (e) {
       console.error('[Settings] Failed to load settings:', e);
     }
+    this._migrateAgentExecution();
     this._populateFields();
+  },
+
+  // Migrate the "Agent execution" tier. The old dead-stub select stored
+  // 'confirm'/'auto', which never took effect. Coerce any legacy/invalid value
+  // to the safest tier and persist the correction. Canonical list + rationale:
+  // agent-execution-tiers.mjs (node-tested). NOTE: old 'auto' must NOT become
+  // 'full-auto' — that would silently grant full permissions.
+  _migrateAgentExecution() {
+    const AGENT_EXECUTION_TIERS = [
+      'read-only',
+      'browser-auto',
+      'browser-auto-local-read',
+      'full-auto',
+    ];
+    const raw = this._getNestedValue(this._settings, 'general.agentExecution');
+    if (raw === undefined) return; // fresh profile → select default handles it
+    const tier = AGENT_EXECUTION_TIERS.includes(raw) ? raw : 'read-only';
+    if (tier !== raw) {
+      this._setNestedValue(this._settings, 'general.agentExecution', tier);
+      this._scheduleSave();
+    }
   },
 
   _populateFields() {
