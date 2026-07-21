@@ -100,6 +100,31 @@ this.nevoflux = class extends ExtensionAPI {
     NevofluxNativeHostRegistrar.ensureRegistered().catch((err) => {
       console.error('[NevoFlux] Failed to register native messaging hosts:', err);
     });
+
+    // Mirror the "Sidebar default" setting (config:settings → general.sidebarBehavior)
+    // into a pref so the chrome-side NevoFluxSidebarDefault module can read it
+    // SYNCHRONOUSLY at window init — independent of when the content store finishes
+    // its async load from the daemon. subscribe() fires on the initial store load
+    // (via _notify, not suppressed by _loading) and on every later change.
+    try {
+      const { NevofluxContentStore } = ChromeUtils.importESModule(
+        'resource:///modules/NevofluxContentStore.sys.mjs'
+      );
+      const mirrorSidebarBehavior = (settings) => {
+        const v = settings?.general?.sidebarBehavior;
+        const behavior = v === 'auto' || v === 'manual' ? v : 'default';
+        try {
+          Services.prefs.setStringPref('extensions.nevoflux.sidebar.behavior', behavior);
+        } catch (e) {
+          // pref layer unavailable — non-fatal
+        }
+      };
+      // Seed from the current value (if already loaded), then track changes.
+      mirrorSidebarBehavior(NevofluxContentStore.get('config:settings'));
+      NevofluxContentStore.subscribe('config:settings', mirrorSidebarBehavior);
+    } catch (err) {
+      console.error('[NevoFlux] Failed to set up sidebar-behavior mirror:', err);
+    }
   }
 
   getAPI(context) {
