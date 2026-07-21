@@ -31,3 +31,8 @@ pref('extensions.logging.enabled', true);
 pref('extensions.nevoflux.sidebar.position', 'right');
 pref('extensions.nevoflux.sidebar.width', 500);
 pref('extensions.nevoflux.sidebar.resizable', true);
+// "Sidebar default" behavior: 'default' | 'auto' | 'manual'. Read at window init
+// by NevoFluxSidebarDefault.mjs; mirrored from config:settings.general.sidebarBehavior
+// by ext-nevoflux.js. firstRunDone gates the one-time first-launch open in 'default'.
+pref('extensions.nevoflux.sidebar.behavior', 'default');
+pref('extensions.nevoflux.sidebar.firstRunDone', false);
