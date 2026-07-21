@@ -148,10 +148,11 @@ const Settings = {
         'Sidebar default',
         'general.sidebarBehavior',
         [
+          ['default', 'Default (remember last state)'],
           ['auto', 'Auto-open'],
           ['manual', 'Manual only'],
         ],
-        'auto'
+        'default'
       )
     );
     sidebarGroup.appendChild(
