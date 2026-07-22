@@ -65,19 +65,37 @@ const NEVOFLUX_SIDEBAR_ID = 'agent_nevoflux_com-sidebar-action';
  * robust across registration paths) and show as soon as it appears.
  */
 async function showWhenRegistered(sc, id) {
-  const deadline = Date.now() + 15000;
-  while (Date.now() < deadline) {
-    if (sc.sidebars && sc.sidebars.has(id)) {
+  // Wait for the extension sidebar command to register (show() silently no-ops
+  // for an unregistered id).
+  const regDeadline = Date.now() + 15000;
+  while (Date.now() < regDeadline && !(sc.sidebars && sc.sidebars.has(id))) {
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  if (!(sc.sidebars && sc.sidebars.has(id))) {
+    console.warn('[NevoFluxSidebarDefault] sidebar not registered within 15s — not shown');
+    return;
+  }
+  // Symmetric to suppressNevofluxSidebar: the native restore manipulates sidebar
+  // state in a BURST over the first ~2s after registration. When the last state
+  // was closed, it keeps our sidebar closed and overrides a single show(). So
+  // show repeatedly until it has stayed open for a stable stretch, then stop
+  // (don't fight a user who closes it right after startup).
+  const STABLE_TICKS = 6; // ~6 * 250ms = 1.5s continuously open
+  const hardDeadline = Date.now() + 10000;
+  let stableOpen = 0;
+  while (Date.now() < hardDeadline && stableOpen < STABLE_TICKS) {
+    if (sc.currentID === id && sc.isOpen) {
+      stableOpen++;
+    } else {
+      stableOpen = 0;
       try {
         await sc.show(id);
       } catch (e) {
         console.error('[NevoFluxSidebarDefault] show failed:', e);
       }
-      return;
     }
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 250));
   }
-  console.warn('[NevoFluxSidebarDefault] sidebar not registered within 15s — not shown');
 }
 
 /**
@@ -90,21 +108,31 @@ async function showWhenRegistered(sc, id) {
  * fight a user who opens it themselves right after startup.
  */
 async function suppressNevofluxSidebar(sc, id) {
+  // Wait for the extension sidebar to register (its restore happens around then).
   const regDeadline = Date.now() + 15000;
   while (Date.now() < regDeadline && !(sc.sidebars && sc.sidebars.has(id))) {
     await new Promise((r) => setTimeout(r, 200));
   }
-  const watchDeadline = Date.now() + 4000;
-  while (Date.now() < watchDeadline) {
+  // The native session-restore reopens our sidebar in a BURST over the first
+  // ~2s after registration, and a single hide gets re-overridden (observed:
+  // 3 reopens ~400ms apart, then stable). So hide repeatedly until it has stayed
+  // closed for a stable stretch, then stop — so we don't fight a user who opens
+  // it themselves later. Hard cap as a backstop.
+  const STABLE_TICKS = 6; // ~6 * 250ms = 1.5s continuously closed
+  const hardDeadline = Date.now() + 10000;
+  let stableClosed = 0;
+  while (Date.now() < hardDeadline && stableClosed < STABLE_TICKS) {
     if (sc.currentID === id && sc.isOpen) {
+      stableClosed = 0;
       try {
         await sc.hide();
       } catch (e) {
         console.error('[NevoFluxSidebarDefault] hide failed:', e);
       }
-      return;
+    } else {
+      stableClosed++;
     }
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 250));
   }
 }
 
