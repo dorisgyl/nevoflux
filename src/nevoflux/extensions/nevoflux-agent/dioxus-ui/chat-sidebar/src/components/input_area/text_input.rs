@@ -1154,6 +1154,9 @@ pub fn TextInput(disabled: bool) -> Element {
             div { class: "input-toolbar",
                 ModeSelector {}
 
+                // Agent execution tier — sits to the right of the three modes.
+                super::TierChip {}
+
                 div { class: "toolbar-right",
                     div { class: "action-icons",
                         button {

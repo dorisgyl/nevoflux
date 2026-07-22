@@ -33,9 +33,6 @@ pub fn InputArea() -> Element {
             // Who is answering (only when a soul is bound or picked)
             SoulChip {}
 
-            // How much this chat auto-executes without confirmation
-            TierChip {}
-
             // Context bar (current tab info)
             ContextBar {}
 

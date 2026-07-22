@@ -40,16 +40,30 @@ pub fn TierChip() -> Element {
     let mut tier = use_signal(|| "read-only".to_string());
     let mut is_override = use_signal(|| false);
     let mut open = use_signal(|| false);
+    // Tracks which session the current tier state belongs to, so we only reset
+    // on an actual session switch (not on unrelated session-signal updates).
+    let mut synced_session = use_signal(String::new);
 
-    // Adopt the global default once on mount. `.peek()` avoids subscribing the
-    // effect (so it runs once); the read happens in the spawned task, outside
-    // the effect's reactive scope.
+    // Re-evaluate whenever the ACTIVE SESSION changes: a new session starts at
+    // the current global default (config:settings → general.agentExecution) with
+    // no per-session override yet. Reading the session id makes this effect
+    // reactive to session switches; a same-session re-render returns early so a
+    // user's per-session pick is preserved.
     use_effect(move || {
+        let sid = ctx.session.read().id.clone();
+        if *synced_session.peek() == sid {
+            return;
+        }
+        synced_session.set(sid);
+        is_override.set(false);
         wasm_bindgen_futures::spawn_local(async move {
-            if let Ok(Some(global)) = messaging::fetch_agent_execution_tier().await {
-                if !*is_override.peek() {
-                    tier.set(global);
-                }
+            let global = messaging::fetch_agent_execution_tier()
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "read-only".to_string());
+            if !*is_override.peek() {
+                tier.set(global);
             }
         });
     });

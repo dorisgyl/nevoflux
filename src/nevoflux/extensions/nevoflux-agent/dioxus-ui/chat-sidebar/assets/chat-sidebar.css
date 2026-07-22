@@ -5602,8 +5602,8 @@ body {
 /* Per-session "Agent execution" tier chip. Same pill language as soul-chip. */
 .tier-chip-wrap {
   position: relative;
-  align-self: flex-start;
-  margin-bottom: var(--nevo-space-sm);
+  display: inline-flex;
+  align-items: center;
 }
 
 .tier-chip {
