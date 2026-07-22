@@ -1215,6 +1215,50 @@ pub async fn fetch_avatar() -> Result<Option<String>, String> {
     Ok(avatar)
 }
 
+/// Fetch the global "Agent execution" tier (config:settings → general.agentExecution).
+/// Returns None if unset; callers default to "read-only".
+pub async fn fetch_agent_execution_tier() -> Result<Option<String>, String> {
+    let request = serde_json::json!({
+        "type": "bg:get_settings",
+        "key": "settings"
+    });
+    let js_value = to_js_value(&request).map_err(|e| format!("Serialize error: {:?}", e))?;
+
+    let response = JsFuture::from(runtime_send_message(js_value))
+        .await
+        .map_err(|e| format!("Fetch settings failed: {:?}", e))?;
+
+    let response_obj: serde_json::Value =
+        from_js_value(response).map_err(|e| format!("Parse settings response error: {}", e))?;
+
+    if response_obj.get("success").and_then(|s| s.as_bool()) != Some(true) {
+        return Ok(None);
+    }
+
+    let tier = response_obj
+        .get("data")
+        .and_then(|d| d.get("general"))
+        .and_then(|g| g.get("agentExecution"))
+        .and_then(|t| t.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+
+    Ok(tier)
+}
+
+/// Persist a value into the daemon-backed content store (Sidebar → Agent).
+/// Used to write the per-session Agent-execution override
+/// (`config:session:<id>:agentExecution`), which the daemon's permission gate
+/// reads with precedence over the global default.
+pub async fn send_content_store_set(key: &str, value: serde_json::Value) -> Result<(), String> {
+    let message = ChatMessage::SystemCommand(SystemCommandPayload {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        command: "content_store.set".to_string(),
+        params: Some(serde_json::json!({ "key": key, "value": value })),
+    });
+    send_to_agent(message).await
+}
+
 // ============================================
 // System Command Queries (Sidebar → Background → Agent with async response)
 // ============================================

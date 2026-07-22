@@ -7,10 +7,12 @@
 mod context_bar;
 mod soul_chip;
 mod text_input;
+mod tier_chip;
 
 pub use context_bar::ContextBar;
 pub use soul_chip::SoulChip;
 pub use text_input::TextInput;
+pub use tier_chip::TierChip;
 
 use dioxus::prelude::*;
 use crate::context::use_app_context;
@@ -30,6 +32,9 @@ pub fn InputArea() -> Element {
         div { class: "input-area",
             // Who is answering (only when a soul is bound or picked)
             SoulChip {}
+
+            // How much this chat auto-executes without confirmation
+            TierChip {}
 
             // Context bar (current tab info)
             ContextBar {}

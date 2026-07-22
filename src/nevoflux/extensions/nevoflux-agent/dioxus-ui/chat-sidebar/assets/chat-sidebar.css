@@ -5599,6 +5599,92 @@ body {
   border-radius: 3px;
 }
 
+/* Per-session "Agent execution" tier chip. Same pill language as soul-chip. */
+.tier-chip-wrap {
+  position: relative;
+  align-self: flex-start;
+  margin-bottom: var(--nevo-space-sm);
+}
+
+.tier-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border: 1px solid var(--nevo-border);
+  border-radius: 999px;
+  background: var(--nevo-background);
+  font-size: var(--nevo-font-size-sm, 12px);
+  color: var(--nevo-text-secondary);
+  cursor: pointer;
+}
+
+.tier-chip:hover {
+  color: var(--nevo-text);
+}
+
+/* The user raised or lowered this chat's permissions from the global default. */
+.tier-chip-override {
+  border-color: color-mix(in srgb, AccentColor 45%, transparent);
+  background: color-mix(in srgb, AccentColor 10%, transparent);
+  color: var(--nevo-text);
+}
+
+.tier-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: AccentColor;
+  flex-shrink: 0;
+}
+
+.tier-chip-name {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tier-chip-caret {
+  opacity: 0.6;
+  font-size: 10px;
+}
+
+.tier-chip-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: 4px;
+  border: 1px solid var(--nevo-border);
+  border-radius: var(--nevo-border-radius, 8px);
+  background: var(--nevo-background);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+
+.tier-chip-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--nevo-text);
+  font-size: var(--nevo-font-size-sm, 12px);
+  text-align: left;
+  cursor: pointer;
+}
+
+.tier-chip-item:hover {
+  background: color-mix(in srgb, AccentColor 12%, transparent);
+}
+
+.tier-chip-item-active {
+  font-weight: 600;
+  color: AccentColor;
+}
+
 /* @ picker. Same shape as the skill picker so the two feel like one idea. */
 .soul-selector-popup {
   position: absolute;
