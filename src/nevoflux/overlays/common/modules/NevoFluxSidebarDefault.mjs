@@ -75,11 +75,13 @@ async function showWhenRegistered(sc, id) {
     console.warn('[NevoFluxSidebarDefault] sidebar not registered within 15s — not shown');
     return;
   }
-  // Symmetric to suppressNevofluxSidebar: the native restore manipulates sidebar
-  // state in a BURST over the first ~2s after registration. When the last state
-  // was closed, it keeps our sidebar closed and overrides a single show(). So
-  // show repeatedly until it has stayed open for a stable stretch, then stop
-  // (don't fight a user who closes it right after startup).
+  // Show repeatedly until the sidebar has stayed open for a stable stretch. Two
+  // reasons a single show() is not enough:
+  //  - the native restore can override it in a burst over the first ~2s;
+  //  - the FIRST sc.show() promise sometimes never resolves (a panel-load race),
+  //    so fire WITHOUT awaiting (awaiting stalls the whole loop) and just re-check
+  //    state next tick — a subsequent show() call then opens it.
+  // Stop once stably open so we don't fight a user who closes it right after.
   const STABLE_TICKS = 6; // ~6 * 250ms = 1.5s continuously open
   const hardDeadline = Date.now() + 10000;
   let stableOpen = 0;
@@ -89,10 +91,8 @@ async function showWhenRegistered(sc, id) {
     } else {
       stableOpen = 0;
       try {
-        await sc.show(id);
-      } catch (e) {
-        console.error('[NevoFluxSidebarDefault] show failed:', e);
-      }
+        Promise.resolve(sc.show(id)).catch(() => {});
+      } catch (_e) {}
     }
     await new Promise((r) => setTimeout(r, 250));
   }
@@ -124,11 +124,11 @@ async function suppressNevofluxSidebar(sc, id) {
   while (Date.now() < hardDeadline && stableClosed < STABLE_TICKS) {
     if (sc.currentID === id && sc.isOpen) {
       stableClosed = 0;
+      // Fire-and-forget (mirrors showWhenRegistered): don't await hide()'s
+      // promise, which can hang; re-check state next tick.
       try {
-        await sc.hide();
-      } catch (e) {
-        console.error('[NevoFluxSidebarDefault] hide failed:', e);
-      }
+        Promise.resolve(sc.hide()).catch(() => {});
+      } catch (_e) {}
     } else {
       stableClosed++;
     }
