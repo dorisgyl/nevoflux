@@ -112,9 +112,16 @@ this.nevoflux = class extends ExtensionAPI {
       );
       const mirrorSidebarBehavior = (settings) => {
         const v = settings?.general?.sidebarBehavior;
-        const behavior = v === 'auto' || v === 'manual' ? v : 'default';
+        // Only mirror an actual stored value. At startup config:settings has not
+        // loaded from the daemon yet (v === undefined); writing a fallback here
+        // would CLOBBER the persisted pref (e.g. reset 'auto' → 'default') right
+        // before the window reads it. Leave the persisted pref untouched until a
+        // real value arrives (initial hydration or a settings change).
+        if (v !== 'auto' && v !== 'manual' && v !== 'default') {
+          return;
+        }
         try {
-          Services.prefs.setStringPref('extensions.nevoflux.sidebar.behavior', behavior);
+          Services.prefs.setStringPref('extensions.nevoflux.sidebar.behavior', v);
         } catch (e) {
           // pref layer unavailable — non-fatal
         }

@@ -56,9 +56,43 @@ const PREF_FIRST_RUN = 'extensions.nevoflux.sidebar.firstRunDone';
 // as NevoFluxAgentAvatar.mjs): makeWidgetId('agent@nevoflux.com') + '-sidebar-action'.
 const NEVOFLUX_SIDEBAR_ID = 'agent_nevoflux_com-sidebar-action';
 
-function applySidebarDefault() {
+/**
+ * Open the NevoFlux sidebar once its WebExtension command is registered.
+ *
+ * SidebarController.show(id) silently returns false (no throw) when `id` is not
+ * yet in the sidebars registry — and the nevoflux-agent extension registers its
+ * `sidebar_action` command AFTER window load, so an immediate show() no-ops.
+ * Poll the registry (SidebarItemAdded also fires, but polling is simplest and
+ * robust across registration paths) and show as soon as it appears.
+ */
+async function showWhenRegistered(sc, id) {
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    if (sc.sidebars && sc.sidebars.has(id)) {
+      try {
+        await sc.show(id);
+      } catch (e) {
+        console.error('[NevoFluxSidebarDefault] show failed:', e);
+      }
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  console.warn('[NevoFluxSidebarDefault] sidebar not registered within 15s — not shown');
+}
+
+async function applySidebarDefault() {
   const sc = window.SidebarController;
   if (!sc) return;
+
+  // Wait until the sidebar's own init + session restore has finished, so our
+  // show()/hide() applies AFTER the restored state rather than being overridden
+  // by the native restore that runs during SidebarController.init().
+  try {
+    if (sc.promiseInitialized) {
+      await sc.promiseInitialized;
+    }
+  } catch (_e) {}
 
   let behavior = 'default';
   let firstRunDone = false;
@@ -75,13 +109,15 @@ function applySidebarDefault() {
     nevofluxSidebarId: NEVOFLUX_SIDEBAR_ID,
   });
 
-  try {
-    if (decision.action === 'show') {
-      sc.show(NEVOFLUX_SIDEBAR_ID);
-    } else if (decision.action === 'hide') {
-      sc.hide();
+  if (decision.action === 'show') {
+    await showWhenRegistered(sc, NEVOFLUX_SIDEBAR_ID);
+  } else if (decision.action === 'hide') {
+    try {
+      await sc.hide();
+    } catch (e) {
+      console.error('[NevoFluxSidebarDefault] hide failed:', e);
     }
-  } catch (_e) {}
+  }
 
   if (decision.markFirstRun) {
     try {
@@ -90,16 +126,15 @@ function applySidebarDefault() {
   }
 }
 
-// Apply after the window's own session restore has settled. `load` mirrors the
-// timing NevoFluxSidebarResize uses; SidebarController state is populated by then.
+// Run once the window has loaded. Module scripts are deferred, so
+// MozBeforeInitialXULLayout may already have fired by the time this runs —
+// don't depend on it; use the load state directly.
 // Guarded so importing this module for unit tests (Node, no DOM) is side-effect
 // free — only the pure decideSidebarAction export is exercised there.
 if (typeof document !== 'undefined' && typeof window !== 'undefined') {
-  document.addEventListener(
-    'MozBeforeInitialXULLayout',
-    () => {
-      window.addEventListener('load', () => applySidebarDefault(), { once: true });
-    },
-    { once: true }
-  );
+  if (document.readyState === 'complete') {
+    applySidebarDefault();
+  } else {
+    window.addEventListener('load', () => applySidebarDefault(), { once: true });
+  }
 }
