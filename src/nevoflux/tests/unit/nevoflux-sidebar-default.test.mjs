@@ -6,68 +6,58 @@ import assert from 'node:assert';
 import { test } from 'node:test';
 import { decideSidebarAction } from '../../overlays/common/modules/NevoFluxSidebarDefault.mjs';
 
-const ID = 'agent_nevoflux_com-sidebar-action';
-const base = { firstRunDone: true, isOpen: false, currentID: null, nevofluxSidebarId: ID };
+// decideSidebarAction is intent-only: it maps (behavior, firstRunDone) to an
+// action. The live sidebar state is intentionally NOT an input — at apply time
+// the extension sidebar has not registered/restored yet, so the imperative
+// layer reconciles against the real post-restore state.
 
-test('auto: 未开则 show', () => {
-  assert.deepStrictEqual(decideSidebarAction({ ...base, behavior: 'auto' }), {
+test('auto → show', () => {
+  assert.deepStrictEqual(decideSidebarAction({ behavior: 'auto', firstRunDone: true }), {
+    action: 'show',
+    markFirstRun: false,
+  });
+  // firstRunDone does not affect auto.
+  assert.deepStrictEqual(decideSidebarAction({ behavior: 'auto', firstRunDone: false }), {
     action: 'show',
     markFirstRun: false,
   });
 });
 
-test('auto: 已开我们的侧栏则 none', () => {
-  assert.deepStrictEqual(
-    decideSidebarAction({ ...base, behavior: 'auto', isOpen: true, currentID: ID }),
-    { action: 'none', markFirstRun: false }
-  );
+test('manual → hide', () => {
+  assert.deepStrictEqual(decideSidebarAction({ behavior: 'manual', firstRunDone: true }), {
+    action: 'hide',
+    markFirstRun: false,
+  });
+  assert.deepStrictEqual(decideSidebarAction({ behavior: 'manual', firstRunDone: false }), {
+    action: 'hide',
+    markFirstRun: false,
+  });
 });
 
-test('auto: 开着别的侧栏仍 show（切到我们的）', () => {
-  assert.deepStrictEqual(
-    decideSidebarAction({ ...base, behavior: 'auto', isOpen: true, currentID: 'viewBookmarksSidebar' }),
-    { action: 'show', markFirstRun: false }
-  );
+test('default: first run → show and mark', () => {
+  assert.deepStrictEqual(decideSidebarAction({ behavior: 'default', firstRunDone: false }), {
+    action: 'show',
+    markFirstRun: true,
+  });
 });
 
-test('manual: 开着我们的侧栏则 hide', () => {
-  assert.deepStrictEqual(
-    decideSidebarAction({ ...base, behavior: 'manual', isOpen: true, currentID: ID }),
-    { action: 'hide', markFirstRun: false }
-  );
-});
-
-test('manual: 开着别的侧栏则 none（不动别人的）', () => {
-  assert.deepStrictEqual(
-    decideSidebarAction({ ...base, behavior: 'manual', isOpen: true, currentID: 'viewBookmarksSidebar' }),
-    { action: 'none', markFirstRun: false }
-  );
-});
-
-test('manual: 未开则 none', () => {
-  assert.deepStrictEqual(decideSidebarAction({ ...base, behavior: 'manual' }), {
+test('default: non-first run → none (defer to native restore)', () => {
+  assert.deepStrictEqual(decideSidebarAction({ behavior: 'default', firstRunDone: true }), {
     action: 'none',
     markFirstRun: false,
   });
 });
 
-test('default: 首次运行则 show 并标记', () => {
-  assert.deepStrictEqual(
-    decideSidebarAction({ ...base, behavior: 'default', firstRunDone: false }),
-    { action: 'show', markFirstRun: true }
-  );
-});
-
-test('default: 非首次则 none（交给原生恢复）', () => {
-  assert.deepStrictEqual(decideSidebarAction({ ...base, behavior: 'default', firstRunDone: true }), {
-    action: 'none',
-    markFirstRun: false,
+test('unknown value falls back to default semantics (first run → show)', () => {
+  assert.deepStrictEqual(decideSidebarAction({ behavior: 'xxx', firstRunDone: false }), {
+    action: 'show',
+    markFirstRun: true,
   });
 });
 
-test('未知值 fallback 到 default 语义（首次 show）', () => {
-  assert.deepStrictEqual(
-    decideSidebarAction({ ...base, behavior: 'xxx', firstRunDone: false }),
-    { action: 'show', markFirstRun: true }
-  );
+test('unknown value, non-first run → none', () => {
+  assert.deepStrictEqual(decideSidebarAction({ behavior: 'xxx', firstRunDone: true }), {
+    action: 'none',
+    markFirstRun: false,
+  });
 });

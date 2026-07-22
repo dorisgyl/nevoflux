@@ -28,21 +28,20 @@
  * @returns {{action:'show'|'hide'|'none', markFirstRun:boolean}}
  */
 export function decideSidebarAction(state) {
-  const { behavior, firstRunDone, isOpen, currentID, nevofluxSidebarId } = state;
-  const ourSidebarOpen = isOpen && currentID === nevofluxSidebarId;
+  const { behavior, firstRunDone } = state;
 
+  // Intent only — NOT the live sidebar state. At apply time the extension
+  // sidebar has not registered/restored yet, so isOpen/currentID are unreliable
+  // (that snapshot said "closed" even when the restore was about to reopen our
+  // sidebar). The imperative layer reconciles against the real, post-restore
+  // state: 'show' polls until registered then shows; 'hide' watches for the
+  // restore and closes our sidebar if it reappears.
   if (behavior === 'auto') {
-    return ourSidebarOpen
-      ? { action: 'none', markFirstRun: false }
-      : { action: 'show', markFirstRun: false };
+    return { action: 'show', markFirstRun: false };
   }
-
   if (behavior === 'manual') {
-    return ourSidebarOpen
-      ? { action: 'hide', markFirstRun: false }
-      : { action: 'none', markFirstRun: false };
+    return { action: 'hide', markFirstRun: false };
   }
-
   // 'default' (and any unknown value → default semantics)
   if (!firstRunDone) {
     return { action: 'show', markFirstRun: true };
@@ -81,6 +80,34 @@ async function showWhenRegistered(sc, id) {
   console.warn('[NevoFluxSidebarDefault] sidebar not registered within 15s — not shown');
 }
 
+/**
+ * Keep the NevoFlux sidebar closed for "Manual only".
+ *
+ * The extension sidebar registers AND the native session-restore reopens it
+ * AFTER window load — so at apply time our sidebar is not open yet, but it may
+ * become open a beat later. Wait for registration, then watch briefly and close
+ * OUR sidebar if the restore reopens it. The watch window is short so we don't
+ * fight a user who opens it themselves right after startup.
+ */
+async function suppressNevofluxSidebar(sc, id) {
+  const regDeadline = Date.now() + 15000;
+  while (Date.now() < regDeadline && !(sc.sidebars && sc.sidebars.has(id))) {
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  const watchDeadline = Date.now() + 4000;
+  while (Date.now() < watchDeadline) {
+    if (sc.currentID === id && sc.isOpen) {
+      try {
+        await sc.hide();
+      } catch (e) {
+        console.error('[NevoFluxSidebarDefault] hide failed:', e);
+      }
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+}
+
 async function applySidebarDefault() {
   const sc = window.SidebarController;
   if (!sc) return;
@@ -101,22 +128,12 @@ async function applySidebarDefault() {
     firstRunDone = Services.prefs.getBoolPref(PREF_FIRST_RUN, false);
   } catch (_e) {}
 
-  const decision = decideSidebarAction({
-    behavior,
-    firstRunDone,
-    isOpen: !!sc.isOpen,
-    currentID: sc.currentID || null,
-    nevofluxSidebarId: NEVOFLUX_SIDEBAR_ID,
-  });
+  const decision = decideSidebarAction({ behavior, firstRunDone });
 
   if (decision.action === 'show') {
     await showWhenRegistered(sc, NEVOFLUX_SIDEBAR_ID);
   } else if (decision.action === 'hide') {
-    try {
-      await sc.hide();
-    } catch (e) {
-      console.error('[NevoFluxSidebarDefault] hide failed:', e);
-    }
+    await suppressNevofluxSidebar(sc, NEVOFLUX_SIDEBAR_ID);
   }
 
   if (decision.markFirstRun) {
