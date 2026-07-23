@@ -618,6 +618,77 @@ pub fn TextInput(disabled: bool) -> Element {
             // Falls through to normal send if parser rejects (e.g. "/loop ").
         }
 
+        // /remote-control slash-command (remote-gateway §S5 login gate). Gate on
+        // A1 device login before a remote channel could open; the flow is driven
+        // via chat messages. Channel-open is deferred until the relay lands.
+        if text.trim() == "/remote-control" {
+            input_text.set(String::new());
+            rows.set(1);
+            show_tab_selector.set(false);
+            attached_files.set(Vec::new());
+
+            ctx.messages.write().push(Message::user(&text));
+            let mut messages = ctx.messages;
+            wasm_bindgen_futures::spawn_local(async move {
+                use crate::messaging::{
+                    account_device_grant_poll, account_device_grant_start, account_status,
+                };
+                match account_status().await {
+                    Ok(true) => {
+                        messages.write().push(Message::assistant_markdown(
+                            "✅ 已登录 nevoflux.app。远程控制通道尚未可用（relay 部署中）。",
+                        ));
+                    }
+                    Ok(false) => match account_device_grant_start().await {
+                        Ok((device_code, user_code, verification_uri, interval)) => {
+                            messages.write().push(Message::assistant_markdown(format!(
+                                "要开启远程控制，先登录 nevoflux.app。\n\n打开 **{verification_uri}** 并输入验证码：\n\n## `{user_code}`\n\n批准后我会自动继续…"
+                            )));
+                            let step = interval.max(1);
+                            // Poll until approved/denied or ~30 min elapses.
+                            for _ in 0..(30 * 60 / step) {
+                                crate::messaging::sleep_ms(step * 1000).await;
+                                match account_device_grant_poll(&device_code).await {
+                                    Ok(outcome) => match outcome.as_str() {
+                                        "token" => {
+                                            messages.write().push(Message::assistant_markdown(
+                                                "✅ 登录成功。远程控制通道尚未可用（relay 部署中）。",
+                                            ));
+                                            break;
+                                        }
+                                        "denied" => {
+                                            messages.write().push(Message::assistant_markdown(
+                                                "❌ 授权被拒绝。",
+                                            ));
+                                            break;
+                                        }
+                                        _ => { /* pending / slow_down — keep polling */ }
+                                    },
+                                    Err(e) => {
+                                        messages.write().push(Message::assistant_markdown(format!(
+                                            "轮询登录状态出错：{e}"
+                                        )));
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            messages.write().push(Message::assistant_markdown(format!(
+                                "启动设备登录失败：{e}"
+                            )));
+                        }
+                    },
+                    Err(e) => {
+                        messages.write().push(Message::assistant_markdown(format!(
+                            "查询登录状态失败：{e}"
+                        )));
+                    }
+                }
+            });
+            return;
+        }
+
         input_text.set(String::new());
         rows.set(1);
         show_tab_selector.set(false);

@@ -1431,6 +1431,51 @@ async fn system_command(
     }
 }
 
+/// `account.status` — is the daemon signed in to nevoflux.app (A1 device grant,
+/// remote-gateway §4b)? The account token is held daemon-side and never returned
+/// here; this only reports the boolean.
+pub async fn account_status() -> Result<bool, String> {
+    let data = system_command("account.status", serde_json::json!({})).await?;
+    Ok(data
+        .get("is_logged_in")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false))
+}
+
+/// `account.device_grant_start` — begin the RFC 8628 device login. Returns
+/// `(device_code, user_code, verification_uri, interval_secs)`.
+pub async fn account_device_grant_start() -> Result<(String, String, String, u32), String> {
+    let d = system_command("account.device_grant_start", serde_json::json!({})).await?;
+    let s = |k: &str| {
+        d.get(k)
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string()
+    };
+    let interval = d.get("interval_secs").and_then(|v| v.as_u64()).unwrap_or(5) as u32;
+    Ok((
+        s("device_code"),
+        s("user_code"),
+        s("verification_uri"),
+        interval,
+    ))
+}
+
+/// `account.device_grant_poll` — poll once for the account token. Returns the
+/// outcome: `"pending" | "slow_down" | "token" | "denied"`. On `"token"` the
+/// daemon has stored the token (still never returned to the sidebar).
+pub async fn account_device_grant_poll(device_code: &str) -> Result<String, String> {
+    let d = system_command(
+        "account.device_grant_poll",
+        serde_json::json!({ "device_code": device_code }),
+    )
+    .await?;
+    Ok(d.get("outcome")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string())
+}
+
 /// `schedule.list` — full authoritative snapshot of all schedules.
 /// Returns them deserialized straight into [`ScheduleJobState`].
 pub async fn schedule_list() -> Result<Vec<ScheduleJobState>, String> {
