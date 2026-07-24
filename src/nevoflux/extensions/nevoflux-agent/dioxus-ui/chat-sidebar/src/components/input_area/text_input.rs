@@ -629,15 +629,30 @@ pub fn TextInput(disabled: bool) -> Element {
 
             ctx.messages.write().push(Message::user(&text));
             let mut messages = ctx.messages;
+            let session_id = ctx.session.read().id.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 use crate::messaging::{
                     account_device_grant_poll, account_device_grant_start, account_status,
                 };
+                // Open the portal channel once logged in and render the pairing
+                // code + connect link for the user.
+                async fn open_channel(mut messages: Signal<Vec<Message>>, session_id: &str) {
+                    match crate::messaging::remote_start(session_id).await {
+                        Ok((channel_id, pairing)) => {
+                            messages.write().push(Message::assistant_markdown(format!(
+                                "✅ 远程控制通道已开启。\n\n在另一台设备上打开下面的链接并登录同一账号：\n\n**https://portal.nevoflux.app/connect/{channel_id}**\n\n然后输入配对码：\n\n## `{pairing}`\n\n保持此会话开启即可；关闭窗口会结束远程通道。"
+                            )));
+                        }
+                        Err(e) => {
+                            messages.write().push(Message::assistant_markdown(format!(
+                                "开启远程控制通道失败：{e}"
+                            )));
+                        }
+                    }
+                }
                 match account_status().await {
                     Ok(true) => {
-                        messages.write().push(Message::assistant_markdown(
-                            "✅ 已登录 nevoflux.app。远程控制通道尚未可用（relay 部署中）。",
-                        ));
+                        open_channel(messages, &session_id).await;
                     }
                     Ok(false) => match account_device_grant_start().await {
                         Ok((device_code, user_code, verification_uri, interval)) => {
@@ -652,8 +667,9 @@ pub fn TextInput(disabled: bool) -> Element {
                                     Ok(outcome) => match outcome.as_str() {
                                         "token" => {
                                             messages.write().push(Message::assistant_markdown(
-                                                "✅ 登录成功。远程控制通道尚未可用（relay 部署中）。",
+                                                "✅ 登录成功。正在开启远程控制通道…",
                                             ));
+                                            open_channel(messages, &session_id).await;
                                             break;
                                         }
                                         "denied" => {

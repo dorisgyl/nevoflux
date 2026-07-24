@@ -1476,6 +1476,26 @@ pub async fn account_device_grant_poll(device_code: &str) -> Result<String, Stri
         .to_string())
 }
 
+/// `remote.start` — open a portal remote-control channel for `session_id`
+/// (remote-gateway §S5). The daemon mints a DO JWT from its stored account
+/// token, spawns the WS gateway, and returns `(channel_id, pairing_code)`. The
+/// pairing code is the E2E secret the user types into the portal; the account
+/// token stays daemon-side.
+pub async fn remote_start(session_id: &str) -> Result<(String, String), String> {
+    let d = system_command(
+        "remote.start",
+        serde_json::json!({ "session_id": session_id }),
+    )
+    .await?;
+    let s = |k: &str| {
+        d.get(k)
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string()
+    };
+    Ok((s("channel_id"), s("pairing_code")))
+}
+
 /// `schedule.list` — full authoritative snapshot of all schedules.
 /// Returns them deserialized straight into [`ScheduleJobState`].
 pub async fn schedule_list() -> Result<Vec<ScheduleJobState>, String> {
