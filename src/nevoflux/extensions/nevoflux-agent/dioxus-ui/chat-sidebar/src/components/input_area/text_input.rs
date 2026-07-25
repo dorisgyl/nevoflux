@@ -4,13 +4,13 @@
 
 //! Text input and send button components
 
+use crate::context::use_app_context;
+use crate::state::{ImageAttachment, Message, SkillItem};
 use dioxus::prelude::*;
+use shared_protocol::{Attachment, BrowserToolAction, BrowserToolRequestPayload, ChatMode};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
-use crate::context::use_app_context;
-use crate::state::{Message, ImageAttachment, SkillItem};
-use shared_protocol::{Attachment, BrowserToolAction, BrowserToolRequestPayload, ChatMode};
 
 #[wasm_bindgen]
 extern "C" {
@@ -36,7 +36,10 @@ extern "C" {
 extern "C" {
     /// Copy image data to the system clipboard via Firefox extension API.
     #[wasm_bindgen(js_namespace = ["browser", "clipboard"], js_name = setImageData, catch)]
-    fn browser_clipboard_set_image_data(data: &js_sys::ArrayBuffer, image_type: &str) -> Result<js_sys::Promise, JsValue>;
+    fn browser_clipboard_set_image_data(
+        data: &js_sys::ArrayBuffer,
+        image_type: &str,
+    ) -> Result<js_sys::Promise, JsValue>;
 }
 
 /// Attached file metadata and content
@@ -90,7 +93,7 @@ impl AttachedFile {
                     }
                 };
             }
-             return rsx! {
+            return rsx! {
                 svg {
                     view_box: "0 0 24 24",
                     fill: "none",
@@ -234,7 +237,6 @@ async fn fetch_open_tabs() -> Vec<TabItem> {
     items
 }
 
-
 /// Text input component with auto-expand
 #[component]
 pub fn TextInput(disabled: bool) -> Element {
@@ -243,10 +245,10 @@ pub fn TextInput(disabled: bool) -> Element {
     let mut input_text = use_signal(String::new);
     let mut rows = use_signal(|| 1usize);
     let mut is_recording = use_signal(|| false);
-    
+
     // File attachment state
     let mut attached_files = use_signal(|| Vec::<AttachedFile>::new());
-    
+
     // Tab selection state
     let mut show_tab_selector = use_signal(|| false);
     let mut available_tabs = use_signal(|| Vec::<TabItem>::new());
@@ -267,9 +269,15 @@ pub fn TextInput(disabled: bool) -> Element {
     use_effect(move || {
         let picked = ctx.picked_files.read().clone();
         if !picked.is_empty() {
-            tracing::info!("Processing {} picked files from native dialog", picked.len());
+            tracing::info!(
+                "Processing {} picked files from native dialog",
+                picked.len()
+            );
             for file in picked {
-                let mime_type = file.mime_type.clone().unwrap_or_else(|| get_mime_type(&file.path));
+                let mime_type = file
+                    .mime_type
+                    .clone()
+                    .unwrap_or_else(|| get_mime_type(&file.path));
                 attached_files.write().push(AttachedFile {
                     id: uuid::Uuid::new_v4().to_string(),
                     name: file.name().to_string(),
@@ -310,7 +318,9 @@ pub fn TextInput(disabled: bool) -> Element {
                     web_sys::console::log_1(&"[NevoFlux] send_skill_list() succeeded".into());
                 }
                 Err(e) => {
-                    web_sys::console::error_1(&format!("[NevoFlux] Failed to fetch skills: {}", e).into());
+                    web_sys::console::error_1(
+                        &format!("[NevoFlux] Failed to fetch skills: {}", e).into(),
+                    );
                 }
             }
         });
@@ -358,14 +368,18 @@ pub fn TextInput(disabled: bool) -> Element {
                 "both", // mode: files, directories, or both
                 true,   // multiple
                 Some("Select files".to_string()),
-            ).await {
+            )
+            .await
+            {
                 Ok(request_id) => {
                     tracing::info!("File picker request sent: {}", request_id);
-                    ctx.pending_file_pick.write().replace(crate::state::PendingFilePick {
-                        request_id,
-                        multiple: true,
-                        title: Some("Select files".to_string()),
-                    });
+                    ctx.pending_file_pick
+                        .write()
+                        .replace(crate::state::PendingFilePick {
+                            request_id,
+                            multiple: true,
+                            title: Some("Select files".to_string()),
+                        });
                 }
                 Err(e) => {
                     tracing::error!("Failed to send pick files request: {}", e);
@@ -384,14 +398,22 @@ pub fn TextInput(disabled: bool) -> Element {
                     &mode,
                     choice.multiple,
                     choice.title.clone(),
-                ).await {
+                )
+                .await
+                {
                     Ok(request_id) => {
-                        tracing::info!("Mode choice re-send: mode={}, request_id={}", mode, request_id);
-                        ctx.pending_file_pick.write().replace(crate::state::PendingFilePick {
-                            request_id,
-                            multiple: choice.multiple,
-                            title: choice.title,
-                        });
+                        tracing::info!(
+                            "Mode choice re-send: mode={}, request_id={}",
+                            mode,
+                            request_id
+                        );
+                        ctx.pending_file_pick
+                            .write()
+                            .replace(crate::state::PendingFilePick {
+                                request_id,
+                                multiple: choice.multiple,
+                                title: choice.title,
+                            });
                     }
                     Err(e) => {
                         tracing::error!("Failed to re-send pick files request: {}", e);
@@ -411,10 +433,18 @@ pub fn TextInput(disabled: bool) -> Element {
         let session_id = ctx.session.read().id.clone();
         let tab_id = ctx.tab_context.read().tab_id;
 
-        web_sys::console::log_1(&format!("[NevoFlux] Screenshot: tab_id={}, session_id={}", tab_id, session_id).into());
+        web_sys::console::log_1(
+            &format!(
+                "[NevoFlux] Screenshot: tab_id={}, session_id={}",
+                tab_id, session_id
+            )
+            .into(),
+        );
 
         if tab_id == 0 {
-            web_sys::console::warn_1(&"[NevoFlux] Cannot take screenshot: no active tab (tab_id=0)".into());
+            web_sys::console::warn_1(
+                &"[NevoFlux] Cannot take screenshot: no active tab (tab_id=0)".into(),
+            );
             tracing::warn!("Cannot take screenshot: no active tab");
             return;
         }
@@ -433,11 +463,19 @@ pub fn TextInput(disabled: bool) -> Element {
 
             match crate::messaging::exec_browser_tool(request).await {
                 Ok(response) => {
-                    web_sys::console::log_1(&format!("[NevoFlux] Screenshot response: success={}", response.success).into());
+                    web_sys::console::log_1(
+                        &format!(
+                            "[NevoFlux] Screenshot response: success={}",
+                            response.success
+                        )
+                        .into(),
+                    );
 
                     if response.success {
                         if let Some(result) = response.result {
-                            web_sys::console::log_1(&format!("[NevoFlux] Screenshot result type: {:?}", result).into());
+                            web_sys::console::log_1(
+                                &format!("[NevoFlux] Screenshot result type: {:?}", result).into(),
+                            );
 
                             // Extract base64 data and detect image type from data URL
                             let mut detected_type = "jpeg"; // default: captureVisibleTab returns jpeg
@@ -445,21 +483,26 @@ pub fn TextInput(disabled: bool) -> Element {
                                 if s.starts_with("data:image/") {
                                     // e.g. "data:image/jpeg;base64,/9j/4AAQ..."
                                     if let Some(header) = s.split(',').next() {
-                                        if header.contains("image/png") { detected_type = "png"; }
+                                        if header.contains("image/png") {
+                                            detected_type = "png";
+                                        }
                                     }
                                     s.split(',').nth(1).map(|d| d.to_string())
                                 } else {
                                     Some(s.to_string())
                                 }
                             } else if let Some(obj) = result.as_object() {
-                                let raw = obj.get("data_url")
+                                let raw = obj
+                                    .get("data_url")
                                     .or_else(|| obj.get("dataUrl"))
                                     .or_else(|| obj.get("data"))
                                     .and_then(|v| v.as_str());
                                 raw.and_then(|s| {
                                     if s.starts_with("data:image/") {
                                         if let Some(header) = s.split(',').next() {
-                                            if header.contains("image/png") { detected_type = "png"; }
+                                            if header.contains("image/png") {
+                                                detected_type = "png";
+                                            }
                                         }
                                         s.split(',').nth(1).map(|d| d.to_string())
                                     } else {
@@ -467,7 +510,10 @@ pub fn TextInput(disabled: bool) -> Element {
                                     }
                                 })
                             } else {
-                                web_sys::console::warn_1(&"[NevoFlux] Screenshot result is neither string nor object".into());
+                                web_sys::console::warn_1(
+                                    &"[NevoFlux] Screenshot result is neither string nor object"
+                                        .into(),
+                                );
                                 None
                             };
 
@@ -478,7 +524,13 @@ pub fn TextInput(disabled: bool) -> Element {
                                 let timestamp = js_sys::Date::now() as u64;
                                 let size = (data.len() * 3 / 4) as u64;
 
-                                web_sys::console::log_1(&format!("[NevoFlux] Screenshot captured: {} bytes, type={}", size, mime_type).into());
+                                web_sys::console::log_1(
+                                    &format!(
+                                        "[NevoFlux] Screenshot captured: {} bytes, type={}",
+                                        size, mime_type
+                                    )
+                                    .into(),
+                                );
 
                                 // Copy to clipboard as a real image via browser.clipboard.setImageData
                                 let array_buffer = base64_to_arraybuffer(&data);
@@ -486,10 +538,19 @@ pub fn TextInput(disabled: bool) -> Element {
                                     Ok(promise) => {
                                         match wasm_bindgen_futures::JsFuture::from(promise).await {
                                             Ok(_) => {
-                                                web_sys::console::log_1(&"[NevoFlux] Screenshot copied to clipboard".into());
+                                                web_sys::console::log_1(
+                                                    &"[NevoFlux] Screenshot copied to clipboard"
+                                                        .into(),
+                                                );
                                             }
                                             Err(e) => {
-                                                web_sys::console::warn_1(&format!("[NevoFlux] Clipboard write failed: {:?}", e).into());
+                                                web_sys::console::warn_1(
+                                                    &format!(
+                                                        "[NevoFlux] Clipboard write failed: {:?}",
+                                                        e
+                                                    )
+                                                    .into(),
+                                                );
                                             }
                                         }
                                     }
@@ -516,15 +577,24 @@ pub fn TextInput(disabled: bool) -> Element {
                                 web_sys::console::warn_1(&"[NevoFlux] Could not extract base64 data from screenshot result".into());
                             }
                         } else {
-                            web_sys::console::warn_1(&"[NevoFlux] Screenshot response has no result".into());
+                            web_sys::console::warn_1(
+                                &"[NevoFlux] Screenshot response has no result".into(),
+                            );
                         }
                     } else {
-                        let error_msg = response.error.map(|e| e.message).unwrap_or_else(|| "Unknown error".to_string());
-                        web_sys::console::error_1(&format!("[NevoFlux] Screenshot failed: {}", error_msg).into());
+                        let error_msg = response
+                            .error
+                            .map(|e| e.message)
+                            .unwrap_or_else(|| "Unknown error".to_string());
+                        web_sys::console::error_1(
+                            &format!("[NevoFlux] Screenshot failed: {}", error_msg).into(),
+                        );
                     }
-                },
+                }
                 Err(e) => {
-                    web_sys::console::error_1(&format!("[NevoFlux] exec_browser_tool failed: {}", e).into());
+                    web_sys::console::error_1(
+                        &format!("[NevoFlux] exec_browser_tool failed: {}", e).into(),
+                    );
                     tracing::error!("Failed to execute screenshot tool: {}", e);
                 }
             }
@@ -546,18 +616,18 @@ pub fn TextInput(disabled: bool) -> Element {
 
         // Add tab as attachment (no caching, just store tab info)
         attached_files.write().push(AttachedFile {
-             id: uuid::Uuid::new_v4().to_string(),
-             name: tab.title.clone(),
-             size: 0,
-             file_type: "tab/reference".to_string(),
-             data: None,
-             file_path: None,
-             is_directory: false,
-             modified: None,
-             is_tab: true,
-             tab_id: Some(tab.id),
-             fav_icon_url: tab.fav_icon_url.clone(),
-             tab_space: Some(tab.space.clone()),
+            id: uuid::Uuid::new_v4().to_string(),
+            name: tab.title.clone(),
+            size: 0,
+            file_type: "tab/reference".to_string(),
+            data: None,
+            file_path: None,
+            is_directory: false,
+            modified: None,
+            is_tab: true,
+            tab_id: Some(tab.id),
+            fav_icon_url: tab.fav_icon_url.clone(),
+            tab_space: Some(tab.space.clone()),
         });
 
         show_tab_selector.set(false);
@@ -630,14 +700,21 @@ pub fn TextInput(disabled: bool) -> Element {
             ctx.messages.write().push(Message::user(&text));
             let mut messages = ctx.messages;
             let session_id = ctx.session.read().id.clone();
+            // Capture the mode the user has selected right now — the remote
+            // channel inherits it verbatim rather than picking its own.
+            let mode = ctx.chat_mode.read().clone();
             wasm_bindgen_futures::spawn_local(async move {
                 use crate::messaging::{
                     account_device_grant_poll, account_device_grant_start, account_status,
                 };
                 // Open the portal channel once logged in and render the pairing
                 // code + connect link for the user.
-                async fn open_channel(mut messages: Signal<Vec<Message>>, session_id: &str) {
-                    match crate::messaging::remote_start(session_id).await {
+                async fn open_channel(
+                    mut messages: Signal<Vec<Message>>,
+                    session_id: &str,
+                    mode: ChatMode,
+                ) {
+                    match crate::messaging::remote_start(session_id, mode).await {
                         Ok((channel_id, pairing)) => {
                             messages.write().push(Message::assistant_markdown(format!(
                                 "✅ 远程控制通道已开启。\n\n在另一台设备上打开下面的链接并登录同一账号：\n\n**https://portal.nevoflux.app/connect/{channel_id}**\n\n然后输入配对码：\n\n## `{pairing}`\n\n保持此会话开启即可；关闭窗口会结束远程通道。"
@@ -652,7 +729,7 @@ pub fn TextInput(disabled: bool) -> Element {
                 }
                 match account_status().await {
                     Ok(true) => {
-                        open_channel(messages, &session_id).await;
+                        open_channel(messages, &session_id, mode.clone()).await;
                     }
                     Ok(false) => match account_device_grant_start().await {
                         Ok((device_code, user_code, verification_uri, interval)) => {
@@ -669,7 +746,7 @@ pub fn TextInput(disabled: bool) -> Element {
                                             messages.write().push(Message::assistant_markdown(
                                                 "✅ 登录成功。正在开启远程控制通道…",
                                             ));
-                                            open_channel(messages, &session_id).await;
+                                            open_channel(messages, &session_id, mode.clone()).await;
                                             break;
                                         }
                                         "denied" => {
@@ -681,9 +758,9 @@ pub fn TextInput(disabled: bool) -> Element {
                                         _ => { /* pending / slow_down — keep polling */ }
                                     },
                                     Err(e) => {
-                                        messages.write().push(Message::assistant_markdown(format!(
-                                            "轮询登录状态出错：{e}"
-                                        )));
+                                        messages.write().push(Message::assistant_markdown(
+                                            format!("轮询登录状态出错：{e}"),
+                                        ));
                                         break;
                                     }
                                 }
@@ -731,10 +808,9 @@ pub fn TextInput(disabled: bool) -> Element {
                 // Tab reference: add to tab_ids
                 if let Some(tab_id) = file.tab_id {
                     tab_ids.push(shared_protocol::chat::TabReference {
-                        space: file
-                            .tab_space
-                            .clone()
-                            .unwrap_or_else(|| shared_protocol::DEFAULT_COOKIE_STORE_ID.to_string()),
+                        space: file.tab_space.clone().unwrap_or_else(|| {
+                            shared_protocol::DEFAULT_COOKIE_STORE_ID.to_string()
+                        }),
                         tab_id,
                         tab_title: file.name.clone(),
                         url: String::new(),
@@ -764,7 +840,7 @@ pub fn TextInput(disabled: bool) -> Element {
         }
 
         let display_text = if text.is_empty() && !message_attachments.is_empty() {
-            String::from("") 
+            String::from("")
         } else {
             text.clone()
         };
@@ -783,11 +859,10 @@ pub fn TextInput(disabled: bool) -> Element {
         // What the user's `@` asked for. Resolved here, against the soul list, so
         // the daemon never has to guess whether an `@` in a sentence was meant
         // for it. A name nobody has is left as plain text.
-        let soul_mention = shared_protocol::chat::find_mention(&text)
-            .and_then(|typed| {
-                crate::state::soul::find_soul_by_mention(&ctx.souls.read(), typed)
-                    .map(|s| shared_protocol::SoulMention::soul(&s.slug))
-            });
+        let soul_mention = shared_protocol::chat::find_mention(&text).and_then(|typed| {
+            crate::state::soul::find_soul_by_mention(&ctx.souls.read(), typed)
+                .map(|s| shared_protocol::SoulMention::soul(&s.slug))
+        });
 
         wasm_bindgen_futures::spawn_local(async move {
             if mock_enabled {
@@ -800,12 +875,25 @@ pub fn TextInput(disabled: bool) -> Element {
                 let mut all_tab_ids = current_tab;
                 // Append user's @-mentioned tabs (avoid duplicates)
                 for t in tab_ids {
-                    if !all_tab_ids.iter().any(|existing| existing.tab_id == t.tab_id) {
+                    if !all_tab_ids
+                        .iter()
+                        .any(|existing| existing.tab_id == t.tab_id)
+                    {
                         all_tab_ids.push(t);
                     }
                 }
 
-                let _ = crate::messaging::send_chat_message(&session_id, text, mode, protocol_attachments, local_files, tab_id, all_tab_ids, soul_mention).await;
+                let _ = crate::messaging::send_chat_message(
+                    &session_id,
+                    text,
+                    mode,
+                    protocol_attachments,
+                    local_files,
+                    tab_id,
+                    all_tab_ids,
+                    soul_mention,
+                )
+                .await;
             }
         });
     };
@@ -866,7 +954,9 @@ pub fn TextInput(disabled: bool) -> Element {
 
             // First time entering / - fetch skills
             if value == "/" {
-                web_sys::console::log_1(&"[NevoFlux] handle_input: / detected, calling fetch_skills()".into());
+                web_sys::console::log_1(
+                    &"[NevoFlux] handle_input: / detected, calling fetch_skills()".into(),
+                );
                 fetch_skills();
             }
 
@@ -1516,5 +1606,6 @@ fn get_mime_type(filename: &str) -> String {
         "rar" => "application/vnd.rar",
         "7z" => "application/x-7z-compressed",
         _ => "application/octet-stream",
-    }.to_string()
+    }
+    .to_string()
 }

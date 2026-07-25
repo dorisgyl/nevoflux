@@ -1174,9 +1174,8 @@ pub async fn send_tool_auth_response(
 
 /// Send the user's skills-update choice (replace/keep) to the agent.
 pub async fn send_skills_update_response(replace: bool) -> Result<(), String> {
-    let msg = ChatMessage::SkillsUpdateResponse(shared_protocol::SkillsUpdateResponsePayload {
-        replace,
-    });
+    let msg =
+        ChatMessage::SkillsUpdateResponse(shared_protocol::SkillsUpdateResponsePayload { replace });
 
     send_to_agent(msg).await
 }
@@ -1409,8 +1408,8 @@ async fn system_command(
         return Err("bg:system_command returned undefined/null".to_string());
     }
 
-    let response_obj: serde_json::Value = from_js_value(response)
-        .map_err(|e| format!("Parse {} response error: {}", command, e))?;
+    let response_obj: serde_json::Value =
+        from_js_value(response).map_err(|e| format!("Parse {} response error: {}", command, e))?;
 
     if response_obj
         .get("success")
@@ -1481,10 +1480,14 @@ pub async fn account_device_grant_poll(device_code: &str) -> Result<String, Stri
 /// token, spawns the WS gateway, and returns `(channel_id, pairing_code)`. The
 /// pairing code is the E2E secret the user types into the portal; the account
 /// token stays daemon-side.
-pub async fn remote_start(session_id: &str) -> Result<(String, String), String> {
+///
+/// `mode` is this sidebar's currently selected chat mode. Remote turns replay
+/// it verbatim, so the channel grants exactly what the local session had — the
+/// remote side never picks its own privilege level.
+pub async fn remote_start(session_id: &str, mode: ChatMode) -> Result<(String, String), String> {
     let d = system_command(
         "remote.start",
-        serde_json::json!({ "session_id": session_id }),
+        serde_json::json!({ "session_id": session_id, "mode": mode }),
     )
     .await?;
     let s = |k: &str| {
@@ -1541,11 +1544,7 @@ struct LoopListRow {
 /// LoopManager that emit no events at all — which pure event-driven `ctx.loops`
 /// never could. `iterations`/`pending_proposal` come from live events only.
 pub async fn loop_list(session_id: &str) -> Result<Vec<crate::state::LoopState>, String> {
-    let data = system_command(
-        "loop.list",
-        serde_json::json!({ "session_id": session_id }),
-    )
-    .await?;
+    let data = system_command("loop.list", serde_json::json!({ "session_id": session_id })).await?;
     let arr = data
         .get("loops")
         .and_then(|s| s.as_array())
