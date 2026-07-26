@@ -25,6 +25,11 @@ on:
         required: true
         default: '0.1.0'
         type: 'string'
+      skip_linux:
+        description: 'Skip the Linux builds (and the AppImages built from them)'
+        required: false
+        default: false
+        type: 'boolean'
       use-sccache:
         description: 'Use sccache'
         required: true
@@ -52,6 +57,11 @@ on:
         required: true
         default: '0.1.0'
         type: 'string'
+      skip_linux:
+        description: 'Skip the Linux builds (and the AppImages built from them)'
+        required: false
+        default: false
+        type: 'boolean'
       use-sccache:
         description: 'Use sccache'
         required: true
@@ -328,6 +338,7 @@ jobs:
 
   linux-x86_64:
     name: Linux build (x86_64)
+    if: ${{ !inputs.skip_linux }}
     uses: ./.github/workflows/linux-x86_64-release-build.yml
     permissions:
       contents: write
@@ -341,6 +352,7 @@ jobs:
 
   linux-aarch64:
     name: Linux build (aarch64)
+    if: ${{ !inputs.skip_linux }}
     uses: ./.github/workflows/linux-aarch64-release-build.yml
     permissions:
       contents: write
@@ -392,6 +404,7 @@ jobs:
 
   appimage:
     name: AppImage build
+    if: ${{ !inputs.skip_linux }}
     uses: ./.github/workflows/appimage-build.yml
     permissions:
       contents: write
