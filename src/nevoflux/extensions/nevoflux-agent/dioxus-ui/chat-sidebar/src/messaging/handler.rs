@@ -114,6 +114,9 @@ fn handle_chat_message(ctx: AppContext, message: ChatMessage) {
         ChatMessage::PlanProposal(payload) => {
             handle_plan_proposal(ctx, payload);
         }
+        ChatMessage::PlanResolved(payload) => {
+            handle_plan_resolved(ctx, payload);
+        }
         ChatMessage::SkillsUpdateRequest(payload) => {
             handle_skills_update_request(ctx, payload);
         }
@@ -1065,6 +1068,31 @@ fn handle_plan_proposal(mut ctx: AppContext, payload: shared_protocol::PlanPropo
 
     // Set agent to waiting state
     ctx.agent_status.write().set_waiting();
+}
+
+/// The plan was answered somewhere else — a remote-control portal on a phone.
+///
+/// Takes the panel down the way the local buttons do, minus sending a response:
+/// the agent's oneshot for this session is already consumed, and a second
+/// answer would only be warned about and dropped.
+fn handle_plan_resolved(mut ctx: AppContext, payload: shared_protocol::PlanResolvedPayload) {
+    if !*ctx.pending_plan.read() {
+        return; // answered here; the local handler already cleared it
+    }
+    tracing::info!("Plan was answered elsewhere ({:?}); closing panel", payload.response);
+
+    ctx.messages.with_mut(|messages| {
+        for msg in messages.iter_mut() {
+            if let MessageContent::Plan(ref mut plan) = msg.content {
+                plan.is_active = false;
+            }
+        }
+    });
+    ctx.pending_plan.set(false);
+    match payload.response {
+        shared_protocol::PlanResponse::Confirmed => ctx.agent_status.write().set_executing(),
+        shared_protocol::PlanResponse::Cancelled => ctx.agent_status.write().hide(),
+    }
 }
 
 // ============================================

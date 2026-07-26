@@ -620,6 +620,17 @@ pub struct PlanResponsePayload {
     pub response: PlanResponse,
 }
 
+/// The plan was decided — possibly somewhere else (Agent → Sidebar).
+///
+/// The agent parks one oneshot per session, so the first answer settles it and
+/// any other surface still showing the panel is offering buttons that decide
+/// nothing. Same role as the `browser_tool_resolved` announce.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlanResolvedPayload {
+    pub session_id: String,
+    pub response: PlanResponse,
+}
+
 /// Agent → Sidebar: the bundled default skills changed since they were last
 /// applied; offer to replace the user's skills or keep them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -808,6 +819,8 @@ pub enum ChatMessage {
     PickFilesResponse(PickFilesResponsePayload),
     /// Plan proposal from agent
     PlanProposal(PlanProposalPayload),
+    /// The plan was answered — possibly on another surface.
+    PlanResolved(PlanResolvedPayload),
     /// Bundled default skills changed; prompt to replace or keep.
     SkillsUpdateRequest(SkillsUpdateRequestPayload),
     /// Optimistic setup status pushed before the daemon connects, so the
@@ -864,6 +877,7 @@ impl ChatMessage {
             Self::BrowserToolRequest(_) |
             Self::PickFilesResponse(_) |
             Self::PlanProposal(_) |
+            Self::PlanResolved(_) |
             Self::SkillsUpdateRequest(_) |
             Self::SetupStatus(_) |
             Self::EventsResponse(_) |
@@ -901,6 +915,7 @@ impl ChatMessage {
             Self::BrowserToolRequest(p) => Some(&p.session_id),
             Self::PickFilesResponse(_) => None,
             Self::PlanProposal(_) => None,
+            Self::PlanResolved(p) => Some(&p.session_id),
             Self::SkillsUpdateRequest(_) => None,
             Self::SetupStatus(_) => None,
             Self::EventsRequest(_) => None,
