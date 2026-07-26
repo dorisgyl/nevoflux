@@ -32,7 +32,9 @@ if [ "$NEED_RESTORE" = true ]; then
         bash src/nevoflux/apply-patches.sh
         echo ""
         echo "============================================================"
-        echo "  src/zen/ restored. Ready for continued development."
+        echo "  src/zen/ regenerated from src/nevoflux/overlays/."
+        echo "  It will show as modified/untracked again — that is normal"
+        echo "  and expected; the sources are already committed."
         echo "============================================================"
     else
         echo "NOTE: Run 'npm run import' to restore src/zen/ for development."
