@@ -140,6 +140,10 @@ const MessageTypes = {
   // AskUser interaction
   ASK_USER_REQUEST: 'ask_user_request',
   ASK_USER_RESPONSE: 'ask_user_response',
+  // Extension-internal: take down a dialog that was answered elsewhere.
+  ASK_USER_RESOLVED: 'ask_user_resolved',
+  // Daemon -> extension: that pending request is settled, whoever answered it.
+  BROWSER_TOOL_RESOLVED: 'browser_tool_resolved',
 
   // Artifact streaming (Agent -> Background -> ContentStore -> Sidebar)
   ARTIFACT_START: 'artifact_start',
@@ -1936,6 +1940,10 @@ class ChannelManager {
         console.log(`[NevoFlux] Handling ${action} directly (bypassing sidebar)`);
         executeBrowserTool(payload, 'direct')
           .then((toolResult) => {
+            // Answered somewhere else: the daemon already routed that answer
+            // and dropped its pending slot, so a second response would only
+            // earn a "no pending request" warning.
+            if (toolResult?.resolvedElsewhere) return;
             channelManager.sendToAgent({
               type: MessageTypes.BROWSER_TOOL_RESPONSE,
               payload: {
@@ -1962,6 +1970,14 @@ class ChannelManager {
         // round-trip and send a second browser_tool_response to the native agent.
         return;
       }
+    }
+
+    // The daemon settled a pending request. Only ask_user has a dialog to take
+    // down here, and the sidebar has no handler for this type, so it is
+    // consumed rather than broadcast.
+    if (msgType === MessageTypes.BROWSER_TOOL_RESOLVED) {
+      handleBrowserToolResolved(message.payload);
+      return;
     }
 
     // Feed the floating-avatar state machine.
@@ -4048,7 +4064,9 @@ async function executeBrowserTool(request, caller = 'unknown') {
 
       // Ask user a question
       case 'ask_user':
-        return await executeAskUser(params);
+        // The daemon's request_id travels with it: it is the only handle the
+        // daemon has to tell us this question was answered somewhere else.
+        return await executeAskUser(params, request.request_id);
 
       // Cache uploaded file (save to disk, return absolute path)
       case 'cache_file':
@@ -6824,7 +6842,7 @@ const pendingAskUserRequests = new Map();
 /**
  * Execute ask user: Show question to user and wait for response
  */
-async function executeAskUser(params) {
+async function executeAskUser(params, daemonRequestId = null) {
   const { question, options = [], allow_custom = true, timeout_ms = 60000 } = params;
 
   // Validate question
@@ -6868,6 +6886,10 @@ async function executeAskUser(params) {
       options,
       allow_custom,
       timeout_ms,
+      // Correlates this local dialog with the daemon's pending request, so
+      // `handleBrowserToolResolved` can find it when the answer came from a
+      // remote-control portal instead of from here.
+      daemonRequestId,
     });
 
     // Send request to sidebar
@@ -6921,6 +6943,39 @@ function handleAskUserResponse(payload) {
       selected_index: selected_index !== undefined ? selected_index : -1,
     },
   });
+}
+
+/**
+ * The daemon settled an ask_user request that someone else answered.
+ *
+ * The daemon keeps one pending slot per request and hands it to whoever
+ * answers first — which, with a remote-control portal attached, may be a
+ * phone. When that happens the dialog here is asking a question that has
+ * already been decided, so take it down and stop waiting.
+ *
+ * The promise is resolved with a marker rather than left dangling; the send
+ * site checks it and skips the outbound response, because the daemon has
+ * already dropped its side of this request and would only log a warning for
+ * an answer it can no longer route.
+ */
+function handleBrowserToolResolved(payload) {
+  const daemonRequestId = payload?.request_id;
+  if (!daemonRequestId) return;
+
+  for (const [requestId, pending] of pendingAskUserRequests) {
+    if (pending.daemonRequestId !== daemonRequestId) continue;
+
+    clearTimeout(pending.timeoutId);
+    pendingAskUserRequests.delete(requestId);
+    AvatarController.onEvent('ask_close');
+    broadcastToSidebar({
+      type: MessageTypes.ASK_USER_RESOLVED,
+      payload: { request_id: requestId },
+    });
+    console.log('[NevoFlux] AskUser: answered elsewhere, closing local dialog', requestId);
+    pending.resolve({ success: true, resolvedElsewhere: true });
+    return;
+  }
 }
 
 /**

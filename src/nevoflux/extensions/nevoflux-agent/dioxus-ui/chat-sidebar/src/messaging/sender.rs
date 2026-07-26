@@ -724,6 +724,11 @@ pub enum InternalMessage {
     ConnectionStatus { connected: bool },
     /// AskUser request from agent (via background.js)
     AskUserRequest(AskUserRequestPayload),
+    /// The AskUser request was answered somewhere else — a remote-control
+    /// portal on a phone — so this dialog is asking a question that has
+    /// already been decided. Close it rather than leave a prompt whose
+    /// buttons no longer do anything.
+    AskUserResolved(AskUserResolvedPayload),
     /// Artifact streaming started
     ArtifactStart(ArtifactStartPayload),
     /// Artifact content delta
@@ -794,6 +799,12 @@ pub struct AskUserRequestPayload {
     pub allow_custom: bool,
     #[serde(default = "default_timeout_ms")]
     pub timeout_ms: u64,
+}
+
+/// Payload of [`InternalMessage::AskUserResolved`].
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AskUserResolvedPayload {
+    pub request_id: String,
 }
 
 fn default_timeout_ms() -> u64 {

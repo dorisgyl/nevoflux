@@ -1711,6 +1711,9 @@ fn handle_internal_message(mut ctx: AppContext, message: InternalMessage) {
             tracing::info!("Received AskUser request: {}", payload.request_id);
             handle_ask_user_request(ctx, payload);
         }
+        InternalMessage::AskUserResolved(payload) => {
+            handle_ask_user_resolved(ctx, payload);
+        }
         InternalMessage::ArtifactStart(payload) => {
             handle_artifact_start(ctx, payload);
         }
@@ -1757,6 +1760,28 @@ fn handle_ask_user_request(mut ctx: AppContext, payload: crate::messaging::sende
     )));
 
     tracing::debug!("AskUser dialog state set, waiting for user response");
+}
+
+/// Close the dialog when the question was answered somewhere else.
+///
+/// The daemon holds one pending slot per request and hands it to whoever
+/// answers first, so once a remote-control portal has answered, the buttons
+/// here would resolve nothing. The id is checked because `ask_user` is a
+/// single-slot signal: without it, a late resolve for an old request would
+/// close an unrelated dialog that is still waiting for an answer.
+fn handle_ask_user_resolved(
+    mut ctx: AppContext,
+    payload: crate::messaging::sender::AskUserResolvedPayload,
+) {
+    let current = ctx
+        .ask_user
+        .read()
+        .as_ref()
+        .map(|s| s.request_id.clone());
+    if current.as_deref() == Some(payload.request_id.as_str()) {
+        ctx.ask_user.set(None);
+        tracing::info!("AskUser {} was answered elsewhere; dialog closed", payload.request_id);
+    }
 }
 
 // ============================================
