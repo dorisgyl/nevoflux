@@ -1579,7 +1579,7 @@ function __wbg_get_imports() {
             return ret;
         },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { dtor_idx: 1125, function: Function { arguments: [Externref, Externref, Externref], shim_idx: 1126, ret: Externref, inner_ret: Some(Externref) }, mutable: false }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { dtor_idx: 1230, function: Function { arguments: [Externref, Externref, Externref], shim_idx: 1231, ret: Externref, inner_ret: Some(Externref) }, mutable: false }) -> Externref`.
             const ret = makeClosure(arg0, arg1, wasm.wasm_bindgen__closure__destroy__h5bbe78ecb8e65153, wasm_bindgen__convert__closures_____invoke__h63425664f35c046c);
             return ret;
         },

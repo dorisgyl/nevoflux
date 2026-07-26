@@ -717,12 +717,12 @@ pub fn TextInput(disabled: bool) -> Element {
                     match crate::messaging::remote_start(session_id, mode).await {
                         Ok((channel_id, pairing)) => {
                             messages.write().push(Message::assistant_markdown(format!(
-                                "✅ 远程控制通道已开启。\n\n在另一台设备上打开下面的链接并登录同一账号：\n\n**https://portal.nevoflux.app/connect/{channel_id}**\n\n然后输入配对码：\n\n## `{pairing}`\n\n保持此会话开启即可；关闭窗口会结束远程通道。"
+                                "✅ Remote control is open.\n\nOn the other device, open this link and sign in to the same account:\n\n**https://portal.nevoflux.app/connect/{channel_id}**\n\nThen enter the pairing code:\n\n## `{pairing}`\n\nKeep this session open — closing the window ends the remote channel."
                             )));
                         }
                         Err(e) => {
                             messages.write().push(Message::assistant_markdown(format!(
-                                "开启远程控制通道失败：{e}"
+                                "Could not open the remote control channel: {e}"
                             )));
                         }
                     }
@@ -734,7 +734,7 @@ pub fn TextInput(disabled: bool) -> Element {
                     Ok(false) => match account_device_grant_start().await {
                         Ok((device_code, user_code, verification_uri, interval)) => {
                             messages.write().push(Message::assistant_markdown(format!(
-                                "要开启远程控制，先登录 nevoflux.app。\n\n打开 **{verification_uri}** 并输入验证码：\n\n## `{user_code}`\n\n批准后我会自动继续…"
+                                "To open remote control, sign in to nevoflux.app first.\n\nOpen **{verification_uri}** and enter this code:\n\n## `{user_code}`\n\nI will carry on once you approve it…"
                             )));
                             let step = interval.max(1);
                             // Poll until approved/denied or ~30 min elapses.
@@ -744,7 +744,7 @@ pub fn TextInput(disabled: bool) -> Element {
                                     Ok(outcome) => match outcome.as_str() {
                                         "token" => {
                                             messages.write().push(Message::assistant_markdown(
-                                                "✅ 登录成功。正在开启远程控制通道…",
+                                                "✅ Signed in. Opening the remote control channel…",
                                             ));
                                             open_channel(messages, &session_id, mode.clone()).await;
                                             break;
@@ -759,7 +759,7 @@ pub fn TextInput(disabled: bool) -> Element {
                                     },
                                     Err(e) => {
                                         messages.write().push(Message::assistant_markdown(
-                                            format!("轮询登录状态出错：{e}"),
+                                            format!("Error while checking sign-in status: {e}"),
                                         ));
                                         break;
                                     }
@@ -768,13 +768,13 @@ pub fn TextInput(disabled: bool) -> Element {
                         }
                         Err(e) => {
                             messages.write().push(Message::assistant_markdown(format!(
-                                "启动设备登录失败：{e}"
+                                "Could not start device sign-in: {e}"
                             )));
                         }
                     },
                     Err(e) => {
                         messages.write().push(Message::assistant_markdown(format!(
-                            "查询登录状态失败：{e}"
+                            "Could not check sign-in status: {e}"
                         )));
                     }
                 }

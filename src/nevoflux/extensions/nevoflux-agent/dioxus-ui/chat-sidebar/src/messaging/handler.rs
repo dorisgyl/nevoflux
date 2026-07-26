@@ -2025,11 +2025,31 @@ fn handle_skill_list_response(mut ctx: AppContext, data: serde_json::Value) {
             .collect();
 
         tracing::info!("Loaded {} skills", skills.len());
-        ctx.available_skills.set(skills);
+        ctx.available_skills.set(with_builtin_commands(skills));
     } else {
         tracing::info!("No skills available");
-        ctx.available_skills.set(Vec::new());
+        ctx.available_skills.set(with_builtin_commands(Vec::new()));
     }
+}
+
+/// Add the slash commands the sidebar answers itself.
+///
+/// `skill.list` reports what the daemon's skill registry holds, and
+/// `/remote-control` is not in it — it is handled here in the input area,
+/// never reaching the daemon. So it worked when typed and did not exist as
+/// far as the menu was concerned, which is the worst of both: a feature you
+/// can only use if you already know it is there.
+fn with_builtin_commands(mut skills: Vec<SkillItem>) -> Vec<SkillItem> {
+    const REMOTE_CONTROL: &str = "remote-control";
+    if !skills.iter().any(|s| s.name == REMOTE_CONTROL) {
+        skills.push(SkillItem {
+            name: REMOTE_CONTROL.to_string(),
+            description: "Open this session on another device, such as a phone".to_string(),
+            tags: vec!["builtin".to_string()],
+        });
+    }
+    skills.sort_by(|a, b| a.name.cmp(&b.name));
+    skills
 }
 
 /// Materialize a `system:loop:*` payload into `ctx.loops`.
