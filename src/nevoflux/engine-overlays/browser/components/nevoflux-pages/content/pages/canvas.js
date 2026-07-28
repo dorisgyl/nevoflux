@@ -982,13 +982,15 @@ html, body { overflow: hidden; margin: 0; padding: 0; width: 100vw; height: 100v
       case 'system.getInfo':
         return bridge.system.getInfo();
 
-      // ── Canvas Share / Import ────────────────────────────
+      // ── Canvas Share / Import + Canvas Tool Whitelist ────
+      // Keep these labels adjacent with no comment between them: no-fallthrough
+      // runs with allowEmptyCase off, so a comment sitting between two case
+      // labels reads as a fallthrough and fails the lint.
       case 'canvas.share':
       case 'canvas.import':
       case 'canvas.share.extend':
       case 'canvas.share.delete':
       case 'canvas.share.list':
-      // ── Canvas Tool Whitelist ────────────────────────────
       case 'canvas.tool.invoke':
       case 'canvas.tool.list': {
         // Plain forward. These used to share one generic body with the
