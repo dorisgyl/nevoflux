@@ -989,11 +989,24 @@ html, body { overflow: hidden; margin: 0; padding: 0; width: 100vw; height: 100v
       case 'canvas.share.delete':
       case 'canvas.share.list':
       // ── Canvas Tool Whitelist ────────────────────────────
-      // falls through
       case 'canvas.tool.invoke':
-      case 'canvas.tool.list':
+      case 'canvas.tool.list': {
+        // Plain forward. These used to share one generic body with the
+        // events.* cases; when events.subscribe grew its own channel-opening
+        // body they kept falling into it and were sent to the bridge as
+        // `events.subscribe`, so the daemon never saw canvas_tool_invoke and
+        // the caller waited forever for tool events that could not arrive.
+        const res = await NevofluxPage.sendQuery('bridge:request', {
+          type: method,
+          payload: args || {},
+        });
+        if (res && res.success === false) {
+          throw new Error(res.error?.message || 'Bridge request failed: ' + method);
+        }
+        return res?.data !== undefined ? res.data : res;
+      }
+
       // ── EventBus ─────────────────────────────────────────
-      // falls through
       case 'events.subscribe': {
         // Open a persistent push channel BEFORE subscribing — bridge:request's
         // 5s push grace is too short for long-lived event subscriptions.
