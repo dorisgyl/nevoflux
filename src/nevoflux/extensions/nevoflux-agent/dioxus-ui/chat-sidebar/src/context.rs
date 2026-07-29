@@ -71,6 +71,13 @@ pub struct AppContext {
     pub pending_plan: Signal<bool>,
     /// Whether to show the history panel
     pub show_history_panel: Signal<bool>,
+    /// The session `/clear` emptied, if the sidebar is still sitting in it.
+    ///
+    /// An emptied session and a brand-new one both have no messages, but they
+    /// are not the same place: clearing keeps you where you were. Holding the
+    /// id rather than a flag means opening another conversation — or starting
+    /// one — invalidates this on its own, with nothing to remember to reset.
+    pub cleared_session: Signal<Option<String>>,
     /// Live tool execution entries (real-time during streaming)
     pub live_tools: Signal<Vec<LiveToolEntry>>,
     /// Pending tool authorization request
@@ -150,6 +157,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
     let maximize = use_signal(parse_maximize_params);
     let pending_plan = use_signal(|| false);
     let show_history_panel = use_signal(|| false);
+    let cleared_session = use_signal(|| None::<String>);
     let live_tools = use_signal(Vec::<LiveToolEntry>::new);
     let pending_tool_auth = use_signal(|| None::<ToolAuthRequest>);
     let pending_skills_update = use_signal(|| None::<SkillsUpdateRequestPayload>);
@@ -193,6 +201,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
         maximize,
         pending_plan,
         show_history_panel,
+        cleared_session,
         live_tools,
         pending_tool_auth,
         pending_skills_update,

@@ -99,6 +99,15 @@ pub fn MessageArea() -> Element {
     let messages = ctx.messages.read();
     let streaming = ctx.streaming.read();
     let is_empty = messages.is_empty() && streaming.is_none();
+    // An empty transcript means "nothing has been said here yet" — unless
+    // `/clear` is what emptied it, in which case it means "this conversation
+    // was cleared and is still open". The welcome screen answers the first and
+    // would be a lie about the second.
+    let was_cleared = ctx
+        .cleared_session
+        .read()
+        .as_deref()
+        .is_some_and(|id| id == ctx.session.read().id);
 
     // Set up event delegation for code copy buttons in markdown content (once)
     use_effect(|| { init_code_copy_delegation(); });
@@ -108,7 +117,9 @@ pub fn MessageArea() -> Element {
             // Sticky stack of /loop cards (spec §2.6).
             // Renders nothing when no active loops exist for this session.
             crate::components::loop_ui::StickyLoopCards {}
-            if is_empty {
+            if is_empty && was_cleared {
+                div { class: "session-cleared-note", "Session cleared" }
+            } else if is_empty {
                 WelcomeScreen {}
             } else {
                 MessageList {}

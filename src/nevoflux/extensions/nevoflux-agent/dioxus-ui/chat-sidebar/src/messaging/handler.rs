@@ -1119,6 +1119,10 @@ fn handle_session_cleared(
     ctx.ask_user.set(None);
     ctx.pending_plan.set(false);
     ctx.agent_status.write().hide();
+    // Stay in the conversation. Without this the empty transcript would put
+    // the welcome screen back up, which reads as having been sent home from a
+    // session that is in fact still open underneath.
+    ctx.cleared_session.set(Some(payload.session_id));
 }
 
 // ============================================

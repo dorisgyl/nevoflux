@@ -444,6 +444,17 @@ body {
   line-height: 1.6;
 }
 
+/* Shown in place of the welcome screen once `/clear` has emptied the session.
+   Deliberately quiet — it explains the blank transcript without occupying it. */
+.session-cleared-note {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--nevo-font-size-sm);
+  color: var(--nevo-text-muted);
+}
+
 /* Welcome Avatar (top-left corner) */
 .welcome-avatar {
   position: absolute;
