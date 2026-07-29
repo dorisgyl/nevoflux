@@ -117,6 +117,9 @@ fn handle_chat_message(ctx: AppContext, message: ChatMessage) {
         ChatMessage::PlanResolved(payload) => {
             handle_plan_resolved(ctx, payload);
         }
+        ChatMessage::SessionCleared(payload) => {
+            handle_session_cleared(ctx, payload);
+        }
         ChatMessage::SkillsUpdateRequest(payload) => {
             handle_skills_update_request(ctx, payload);
         }
@@ -1093,6 +1096,29 @@ fn handle_plan_resolved(mut ctx: AppContext, payload: shared_protocol::PlanResol
         shared_protocol::PlanResponse::Confirmed => ctx.agent_status.write().set_executing(),
         shared_protocol::PlanResponse::Cancelled => ctx.agent_status.write().hide(),
     }
+}
+
+/// The session's contents were cleared.
+///
+/// Everything belonging to that conversation goes with it. A plan panel or a
+/// permission dialog left standing would be worse than a leftover message:
+/// both offer buttons that now decide nothing, and the turn that raised them
+/// no longer exists to be answered.
+fn handle_session_cleared(
+    mut ctx: AppContext,
+    payload: shared_protocol::SessionClearedPayload,
+) {
+    tracing::info!(
+        "session cleared: {} message(s), {} artifact(s)",
+        payload.messages,
+        payload.artifacts
+    );
+    ctx.messages.write().clear();
+    ctx.streaming.set(None);
+    ctx.permission_request.set(None);
+    ctx.ask_user.set(None);
+    ctx.pending_plan.set(false);
+    ctx.agent_status.write().hide();
 }
 
 // ============================================
