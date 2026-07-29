@@ -631,6 +631,23 @@ pub struct PlanResolvedPayload {
     pub response: PlanResponse,
 }
 
+/// Agent → Sidebar: this session's contents are gone.
+///
+/// Sent after `/clear` succeeds, and only then — a failed clear says nothing,
+/// so every surface keeps the same (stale) contents rather than one of them
+/// showing an emptiness the database does not share.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionClearedPayload {
+    pub session_id: String,
+    /// How many messages went. Counts are for the log and any confirmation
+    /// copy; nothing depends on them, so an older daemon that omits them is
+    /// still understood.
+    #[serde(default)]
+    pub messages: u32,
+    #[serde(default)]
+    pub artifacts: usize,
+}
+
 /// Agent → Sidebar: the bundled default skills changed since they were last
 /// applied; offer to replace the user's skills or keep them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -821,6 +838,9 @@ pub enum ChatMessage {
     PlanProposal(PlanProposalPayload),
     /// The plan was answered — possibly on another surface.
     PlanResolved(PlanResolvedPayload),
+    /// This session's contents were cleared (`/clear`). The session itself
+    /// remains, and the next message lands in it as usual.
+    SessionCleared(SessionClearedPayload),
     /// Bundled default skills changed; prompt to replace or keep.
     SkillsUpdateRequest(SkillsUpdateRequestPayload),
     /// Optimistic setup status pushed before the daemon connects, so the
@@ -878,6 +898,7 @@ impl ChatMessage {
             Self::PickFilesResponse(_) |
             Self::PlanProposal(_) |
             Self::PlanResolved(_) |
+            Self::SessionCleared(_) |
             Self::SkillsUpdateRequest(_) |
             Self::SetupStatus(_) |
             Self::EventsResponse(_) |
@@ -916,6 +937,7 @@ impl ChatMessage {
             Self::PickFilesResponse(_) => None,
             Self::PlanProposal(_) => None,
             Self::PlanResolved(p) => Some(&p.session_id),
+            Self::SessionCleared(p) => Some(&p.session_id),
             Self::SkillsUpdateRequest(_) => None,
             Self::SetupStatus(_) => None,
             Self::EventsRequest(_) => None,

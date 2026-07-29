@@ -42,7 +42,7 @@ pub use chat::{
     PlanInfo, QuotaInfo, UsageQuota, SystemResponsePayload, SystemError,
     BrowserToolRequestPayload, SetupStatusPayload,
     // Plan proposal/response
-    PlanStep, PlanProposalPayload, PlanResponse, PlanResponsePayload, PlanResolvedPayload,
+    PlanStep, PlanProposalPayload, PlanResponse, PlanResponsePayload, PlanResolvedPayload, SessionClearedPayload,
     // Skills update prompt (replace/keep)
     SkillsUpdateRequestPayload, SkillsUpdateResponsePayload,
     // Tool events & authorization
