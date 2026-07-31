@@ -83,8 +83,21 @@ jobs:
         run: |
           set -ex
           VERSION="${{ inputs.build-version }}"
-          gh release download "$VERSION" --repo "${{ github.repository }}" \
-            -p "nevoflux.linux-${{ matrix.arch }}.tar.xz" --clobber
+          # The self-hosted runner's link to GitHub drops mid-transfer often
+          # enough to matter — a 0.3.13 AppImage job died on "connection reset
+          # by peer" partway through this ~100 MB download. Retry rather than
+          # spend a job on a dropped socket; build.yml's source download does
+          # the same for the same reason.
+          for attempt in 1 2 3 4 5; do
+            gh release download "$VERSION" --repo "${{ github.repository }}" \
+              -p "nevoflux.linux-${{ matrix.arch }}.tar.xz" --clobber && break
+            if [ "$attempt" = 5 ]; then
+              echo "::error::download failed after 5 attempts"
+              exit 1
+            fi
+            echo "::warning::download attempt $attempt/5 failed; retrying in $((attempt * 15))s"
+            sleep $((attempt * 15))
+          done
 
       - name: Execute AppImage build
         run: |
