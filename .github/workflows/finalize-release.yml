@@ -13,6 +13,22 @@ name: Finalize Release
 # This workflow:
 #   1. Generates release notes
 #   2. Flips the draft release to published (single release, no v/non-v merge)
+#   3. Builds the headless Docker image (amd64 + arm64) from the now-public
+#      tarballs and pushes it to Docker Hub
+#
+# Why the image is built HERE and not in build.yml: the headless Dockerfile
+# (nevoflux-agent, deploy/headless) installs the browser by downloading
+# releases/download/<version>/nevoflux.linux-<arch>.tar.xz. That URL 404s while
+# the release is still a draft, so the image cannot be built until step 2 above
+# has run. Building it here also means a published image always corresponds to
+# a release that actually shipped.
+#
+# Both Linux architectures must be in the release, so a build.yml run with
+# skip_linux=true has nothing to build an image from — the wait step below then
+# fails with the missing URL rather than letting the Docker build 404 later.
+#
+# Docker Hub credentials live in the Deploy-Release environment as
+# DOCKERHUB_USERNAME and DOCKERHUB_TOKEN (an access token, not the password).
 
 on:
   workflow_dispatch:
@@ -28,6 +44,16 @@ on:
         default: 'release'
         options:
           - 'release'
+      agent_version:
+        description: 'nevoflux-agent release to bake into the Docker image, WITH v prefix (e.g. v0.3.5), or "latest"'
+        required: false
+        type: string
+        default: 'latest'
+      skip_docker:
+        description: 'Publish the release but skip the Docker Hub image'
+        required: false
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       version:
@@ -39,6 +65,16 @@ on:
         required: false
         type: string
         default: 'release'
+      agent_version:
+        description: 'nevoflux-agent release to bake into the Docker image, WITH v prefix (e.g. v0.3.5), or "latest"'
+        required: false
+        type: string
+        default: 'latest'
+      skip_docker:
+        description: 'Publish the release but skip the Docker Hub image'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   publish:
@@ -96,3 +132,118 @@ jobs:
             --draft=false \
             --title "Release build - $VERSION ($BUILD_DATE)" \
             --notes-file release_notes.md
+
+  docker:
+    name: Headless Docker image (amd64 + arm64)
+    needs: publish
+    if: ${{ !inputs.skip_docker }}
+    runs-on: ubuntu-latest
+    # Same environment as `publish`: DOCKERHUB_USERNAME / DOCKERHUB_TOKEN are
+    # environment secrets and do not resolve outside it.
+    environment:
+      name: Deploy-Release
+
+    steps:
+      # The build context is the agent repo's deploy/headless directory — the
+      # Dockerfile COPYs entrypoint.sh and native-host/ from it. Only that
+      # subtree is fetched; the rest of the repo is several hundred MB.
+      #
+      # The ref follows agent_version rather than being its own input: the agent
+      # repo tags releases as vX.Y.Z, which is exactly the format AGENT_VERSION
+      # takes, so pinning the agent binary pins the Dockerfile that shipped with
+      # it. Without this the versions baked INTO the image would be pinned while
+      # the recipe that builds it floated on main — rebuilding an old version
+      # months later would not reproduce the old image. 'latest' (or an empty
+      # value) means main, which is what the unpinned path wants anyway.
+      - name: Checkout the agent repo (deploy/headless only)
+        uses: actions/checkout@v4
+        with:
+          repository: nevoflux-browser/nevoflux-agent
+          ref: ${{ (inputs.agent_version != 'latest' && inputs.agent_version) || 'main' }}
+          token: ${{ secrets.DEPLOY_KEY }}
+          sparse-checkout: deploy/headless
+          path: agent
+
+      # `gh release edit --draft=false` returns before the asset is reliably
+      # servable, and the Docker build downloads it with no retry of its own —
+      # a 404 there fails the whole image build several minutes in. Poll first.
+      # A one-byte range request, not HEAD: it exercises the same redirect to
+      # object storage that the real download follows.
+      - name: Wait for the published browser tarball to be downloadable
+        run: |
+          set -e
+          BASE="https://github.com/${{ github.repository }}/releases/download/${{ inputs.version }}"
+          for arch in x86_64 aarch64; do
+            URL="$BASE/nevoflux.linux-$arch.tar.xz"
+            ok=""
+            for attempt in 1 2 3 4 5 6; do
+              if curl -fsSL --range 0-0 -o /dev/null "$URL"; then
+                echo "asset is live: $URL"
+                ok=1
+                break
+              fi
+              echo "::warning::attempt $attempt/6: $URL not downloadable yet, waiting 20s"
+              sleep 20
+            done
+            if [ -z "$ok" ]; then
+              echo "::error::browser tarball never became downloadable: $URL"
+              exit 1
+            fi
+          done
+
+      # arm64 is emulated. That is cheap here because the arm64 layers only
+      # curl/tar/chown prebuilt aarch64 tarballs — nothing is compiled. The one
+      # slow step is the bun + gbrain install. Build time is not runtime: what a
+      # Mac mini pulls is a native arm64 image.
+      - name: Set up QEMU (for the arm64 layers)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: agent/deploy/headless
+          file: agent/deploy/headless/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          # BROWSER_VERSION takes the bare version (no leading v) — that is the
+          # release tag this workflow publishes. AGENT_VERSION wants the v
+          # prefix, which is how the agent repo tags its releases.
+          build-args: |
+            BROWSER_VERSION=${{ inputs.version }}
+            AGENT_VERSION=${{ inputs.agent_version || 'latest' }}
+          tags: |
+            nevoflux/agent:${{ inputs.version }}
+            nevoflux/agent:latest
+          labels: |
+            org.opencontainers.image.version=${{ inputs.version }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          # Deliberately NO GHA layer cache. Everything expensive sits below a
+          # layer that changes every release: the browser and agent tarballs are
+          # downloaded with BROWSER_VERSION/AGENT_VERSION baked in, and the bun +
+          # gbrain install comes after them, so it re-runs regardless. Only the
+          # apt layer would ever be reused — a couple of minutes — while
+          # exporting a 2-3 GB image into a cache the whole repository shares
+          # (10 GB, LRU) would evict everyone else's entries every release.
+
+      - name: Summary
+        run: |
+          {
+            echo "### Docker image pushed"
+            echo
+            echo '- `nevoflux/agent:${{ inputs.version }}`'
+            echo '- `nevoflux/agent:latest`'
+            echo
+            echo "browser: ${{ inputs.version }} · agent: ${{ inputs.agent_version || 'latest' }} · platforms: linux/amd64, linux/arm64"
+          } >> "$GITHUB_STEP_SUMMARY"
