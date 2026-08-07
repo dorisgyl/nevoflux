@@ -614,6 +614,49 @@ pub async fn open_tab_via_background(url: &str, active: bool) -> Result<(), Stri
     Ok(())
 }
 
+/// Whether the browser holds a signed-in session on `origin` (scheme + host).
+///
+/// Delegates to the background script because the probe needs the user's
+/// cookies. `Err` means the probe itself failed — that is deliberately distinct
+/// from `Ok(false)`, so callers can say "you may need to sign in" instead of
+/// asserting the user is signed out.
+pub async fn check_web_session(origin: &str) -> Result<bool, String> {
+    let message = js_sys::Object::new();
+    js_sys::Reflect::set(
+        &message,
+        &JsValue::from_str("type"),
+        &JsValue::from_str("bg:check_web_session"),
+    )
+    .map_err(|_| "Failed to set type")?;
+    js_sys::Reflect::set(
+        &message,
+        &JsValue::from_str("origin"),
+        &JsValue::from_str(origin),
+    )
+    .map_err(|_| "Failed to set origin")?;
+
+    let result = send_to_background_raw(message.into()).await?;
+    let obj: js_sys::Object = result
+        .dyn_into()
+        .map_err(|_| "check_web_session: response is not an object".to_string())?;
+
+    let success =
+        js_sys::Reflect::get(&obj, &JsValue::from_str("success")).unwrap_or(JsValue::FALSE);
+    if success != JsValue::TRUE {
+        let err = js_sys::Reflect::get(&obj, &JsValue::from_str("error"))
+            .ok()
+            .and_then(|e| e.as_string())
+            .unwrap_or_else(|| "check_web_session failed".to_string());
+        return Err(err);
+    }
+
+    Ok(
+        js_sys::Reflect::get(&obj, &JsValue::from_str("signed_in"))
+            .map(|v| v == JsValue::TRUE)
+            .unwrap_or(false),
+    )
+}
+
 /// Create a new tab
 pub async fn create_tab(url: &str, active: bool) -> Result<TabInfo, String> {
     let options = js_sys::Object::new();
