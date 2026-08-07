@@ -19,6 +19,7 @@ import './pack-ui-logic.test.mjs';
 import './recorder-logic.test.mjs';
 import './handoff-logic.test.mjs';
 import './theme-color.test.mjs';
+import './web-session.test.mjs';
 
 // Run all tests
 const results = await runner.run();

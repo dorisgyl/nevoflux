@@ -11,6 +11,7 @@ import { makeHeader } from '../content/recorder-logic.mjs';
 // Floating-avatar state machine and prompt policy (Tasks 1 & 2)
 import { createAgentStatusMachine } from './agent-status-machine.mjs';
 import { promptFor } from './avatar-prompt-policy.mjs';
+import { checkWebSession } from './web-session.mjs';
 
 // Immediate debug log to verify script is loading
 console.log('[NevoFlux] Background script starting...');
@@ -101,6 +102,10 @@ const BackgroundAPI = {
   // Schedule badge state (background owns the system:schedule:* subscription;
   // sidebar pulls the aggregated state for its own initial render).
   SCHEDULE_BADGE_STATE: 'bg:schedule_badge_state',
+
+  // Account sign-in probe (sidebar -> background -> account host, with cookies).
+  // The daemon cannot do this; it holds no browser cookies.
+  CHECK_WEB_SESSION: 'bg:check_web_session',
 };
 
 // =============================================================================
@@ -7981,6 +7986,23 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
           }
         } catch (err) {
           console.error('[NevoFlux] OPEN_TAB error:', err);
+          sendResponse({ success: false, error: err.message });
+        }
+      })();
+      return true; // Keep sendResponse valid for async
+
+    case BackgroundAPI.CHECK_WEB_SESSION:
+      (async () => {
+        try {
+          const origin = message.origin;
+          if (!origin) {
+            sendResponse({ success: false, error: 'origin required' });
+            return;
+          }
+          const { signed_in } = await checkWebSession(origin);
+          sendResponse({ success: true, signed_in });
+        } catch (err) {
+          console.error('[NevoFlux] CHECK_WEB_SESSION error:', err);
           sendResponse({ success: false, error: err.message });
         }
       })();
