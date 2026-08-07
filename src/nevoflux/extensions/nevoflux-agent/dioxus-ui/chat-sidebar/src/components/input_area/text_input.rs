@@ -688,9 +688,8 @@ pub fn TextInput(disabled: bool) -> Element {
             // Falls through to normal send if parser rejects (e.g. "/loop ").
         }
 
-        // /remote-control slash-command (remote-gateway §S5 login gate). Gate on
-        // A1 device login before a remote channel could open; the flow is driven
-        // via chat messages. Channel-open is deferred until the relay lands.
+        // /remote-control slash-command (remote-gateway §S5 login gate). The
+        // whole device-grant dance lives in messaging::device_login.
         if text.trim() == "/remote-control" {
             input_text.set(String::new());
             rows.set(1);
@@ -698,86 +697,13 @@ pub fn TextInput(disabled: bool) -> Element {
             attached_files.set(Vec::new());
 
             ctx.messages.write().push(Message::user(&text));
-            let mut messages = ctx.messages;
+            let messages = ctx.messages;
             let session_id = ctx.session.read().id.clone();
-            // Capture the mode the user has selected right now — the remote
-            // channel inherits it verbatim rather than picking its own.
+            // The remote channel inherits the mode the user has selected right
+            // now rather than picking its own.
             let mode = ctx.chat_mode.read().clone();
             wasm_bindgen_futures::spawn_local(async move {
-                use crate::messaging::{
-                    account_device_grant_poll, account_device_grant_start, account_status,
-                };
-                // Open the portal channel once logged in and render the pairing
-                // code + connect link for the user.
-                async fn open_channel(
-                    mut messages: Signal<Vec<Message>>,
-                    session_id: &str,
-                    mode: ChatMode,
-                ) {
-                    match crate::messaging::remote_start(session_id, mode).await {
-                        Ok((channel_id, pairing)) => {
-                            messages.write().push(Message::assistant_markdown(format!(
-                                "✅ Remote control is open.\n\nOn the other device, open this link and sign in to the same account:\n\n**https://portal.nevoflux.app/connect/{channel_id}**\n\nThen enter the pairing code:\n\n## `{pairing}`\n\nKeep this session open — closing the window ends the remote channel."
-                            )));
-                        }
-                        Err(e) => {
-                            messages.write().push(Message::assistant_markdown(format!(
-                                "Could not open the remote control channel: {e}"
-                            )));
-                        }
-                    }
-                }
-                match account_status().await {
-                    Ok(true) => {
-                        open_channel(messages, &session_id, mode.clone()).await;
-                    }
-                    Ok(false) => match account_device_grant_start().await {
-                        Ok((device_code, user_code, verification_uri, interval)) => {
-                            messages.write().push(Message::assistant_markdown(format!(
-                                "To open remote control, sign in to nevoflux.app first.\n\nOpen **{verification_uri}** and enter this code:\n\n## `{user_code}`\n\nI will carry on once you approve it…"
-                            )));
-                            let step = interval.max(1);
-                            // Poll until approved/denied or ~30 min elapses.
-                            for _ in 0..(30 * 60 / step) {
-                                crate::messaging::sleep_ms(step * 1000).await;
-                                match account_device_grant_poll(&device_code).await {
-                                    Ok(outcome) => match outcome.as_str() {
-                                        "token" => {
-                                            messages.write().push(Message::assistant_markdown(
-                                                "✅ Signed in. Opening the remote control channel…",
-                                            ));
-                                            open_channel(messages, &session_id, mode.clone()).await;
-                                            break;
-                                        }
-                                        "denied" => {
-                                            messages.write().push(Message::assistant_markdown(
-                                                "❌ 授权被拒绝。",
-                                            ));
-                                            break;
-                                        }
-                                        _ => { /* pending / slow_down — keep polling */ }
-                                    },
-                                    Err(e) => {
-                                        messages.write().push(Message::assistant_markdown(
-                                            format!("Error while checking sign-in status: {e}"),
-                                        ));
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            messages.write().push(Message::assistant_markdown(format!(
-                                "Could not start device sign-in: {e}"
-                            )));
-                        }
-                    },
-                    Err(e) => {
-                        messages.write().push(Message::assistant_markdown(format!(
-                            "Could not check sign-in status: {e}"
-                        )));
-                    }
-                }
+                crate::messaging::device_login::run(messages, session_id, mode).await;
             });
             return;
         }
