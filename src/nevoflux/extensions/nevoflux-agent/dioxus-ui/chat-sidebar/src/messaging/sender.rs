@@ -1454,7 +1454,20 @@ pub async fn account_status() -> Result<bool, String> {
 
 /// `account.device_grant_start` — begin the RFC 8628 device login. Returns
 /// `(device_code, user_code, verification_uri, interval_secs)`.
-pub async fn account_device_grant_start() -> Result<(String, String, String, u32), String> {
+/// What `account.device_grant_start` hands back. A struct rather than a tuple
+/// because the prefilled URL made it five fields wide.
+pub struct DeviceGrant {
+    pub device_code: String,
+    pub user_code: String,
+    pub verification_uri: String,
+    /// `verification_uri` with `?user_code=` appended, when the auth server
+    /// supplies it. The device page prefills its input from that parameter.
+    pub verification_uri_complete: Option<String>,
+    pub interval_secs: u32,
+}
+
+/// `account.device_grant_start` — begin an RFC 8628 device grant.
+pub async fn account_device_grant_start() -> Result<DeviceGrant, String> {
     let d = system_command("account.device_grant_start", serde_json::json!({})).await?;
     let s = |k: &str| {
         d.get(k)
@@ -1462,13 +1475,17 @@ pub async fn account_device_grant_start() -> Result<(String, String, String, u32
             .unwrap_or_default()
             .to_string()
     };
-    let interval = d.get("interval_secs").and_then(|v| v.as_u64()).unwrap_or(5) as u32;
-    Ok((
-        s("device_code"),
-        s("user_code"),
-        s("verification_uri"),
-        interval,
-    ))
+    Ok(DeviceGrant {
+        device_code: s("device_code"),
+        user_code: s("user_code"),
+        verification_uri: s("verification_uri"),
+        verification_uri_complete: d
+            .get("verification_uri_complete")
+            .and_then(|v| v.as_str())
+            .filter(|v| !v.is_empty())
+            .map(String::from),
+        interval_secs: d.get("interval_secs").and_then(|v| v.as_u64()).unwrap_or(5) as u32,
+    })
 }
 
 /// `account.device_grant_poll` — poll once for the account token. Returns the
