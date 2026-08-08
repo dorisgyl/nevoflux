@@ -365,6 +365,122 @@ export class NevofluxParent extends JSWindowActorParent {
         }
       }
 
+      case 'canvas:downloadStarted': {
+        // A content-process page cannot tell whether its <a download> click
+        // actually produced a download: when the blob URL fails to resolve in
+        // the parent, the load is torn down with no exception, no console
+        // entry and no download record. The parent owns the download list, so
+        // let the page ask it. `since` is a Date.now() taken just before the
+        // click; `stem` is the leading part of the expected file name.
+        try {
+          const { Downloads } = ChromeUtils.importESModule(
+            'resource://gre/modules/Downloads.sys.mjs'
+          );
+          const since = Number(data?.since) || 0;
+          // Gecko sanitizes download file names per platform ("Q3: plan" is
+          // saved as "Q3_ plan"), so the requested name is not a substring of
+          // the saved one. Compare letters and digits only — those survive
+          // sanitizing — otherwise every export with a punctuated title would
+          // look like a failure and get written a second time by the fallback.
+          const norm = (s) =>
+            String(s || '')
+              .toLowerCase()
+              .replace(/[^\p{L}\p{N}]/gu, '');
+          const stem = norm(data?.stem);
+          const list = await Downloads.getList(Downloads.ALL);
+          const started = (await list.getAll()).some((d) => {
+            // Allow a little slack: startTime is stamped in the parent.
+            if (!d.startTime || d.startTime.getTime() < since - 2000) {
+              return false;
+            }
+            if (!stem) {
+              return true; // Nothing to match on; any fresh download counts.
+            }
+            const path = d.target?.path || '';
+            let base = path;
+            try {
+              base = PathUtils.filename(path);
+            } catch (e) {}
+            return norm(base).includes(stem);
+          });
+          return { ok: true, started };
+        } catch (e) {
+          return { ok: false, error: String(e && e.message ? e.message : e) };
+        }
+      }
+
+      case 'canvas:openForPrint': {
+        // "Export as PDF" opens the clean artifact HTML in a tab for the user
+        // to print. Doing that via a blob URL leaves a blank tab wherever
+        // blob: URLs fail to resolve in the parent — the same failure that
+        // swallows the other exports. Write a temp file and open that, which
+        // does not go through blob URL plumbing at all.
+        try {
+          const html = String(data?.html ?? '');
+          if (!html) {
+            return { ok: false, error: 'nothing to print' };
+          }
+          const name =
+            String(data?.filename || 'artifact')
+              .replace(/[^\p{L}\p{N}._-]/gu, '_')
+              .slice(0, 60) || 'artifact';
+          const path = PathUtils.join(
+            PathUtils.tempDir,
+            `nevoflux-print-${name}.html`
+          );
+          await IOUtils.writeUTF8(path, html);
+
+          const win = Services.wm.getMostRecentWindow('navigator:browser');
+          if (!win) {
+            return { ok: false, error: 'no browser window' };
+          }
+          win.gBrowser.selectedTab = win.gBrowser.addTab(
+            PathUtils.toFileURI(path),
+            {
+              triggeringPrincipal:
+                Services.scriptSecurityManager.getSystemPrincipal(),
+            }
+          );
+          return { ok: true, path };
+        } catch (e) {
+          return { ok: false, error: String(e && e.message ? e.message : e) };
+        }
+      }
+
+      case 'canvas:saveFile': {
+        // Parent-side fallback for exports whose anchor download was dropped.
+        // Writes straight to the configured downloads directory and returns
+        // the real path so the page can tell the user where the file went,
+        // instead of failing silently.
+        try {
+          const { Downloads } = ChromeUtils.importESModule(
+            'resource://gre/modules/Downloads.sys.mjs'
+          );
+          const { DownloadPaths } = ChromeUtils.importESModule(
+            'resource://gre/modules/DownloadPaths.sys.mjs'
+          );
+          const bytes =
+            data?.bytes instanceof Uint8Array
+              ? data.bytes
+              : new TextEncoder().encode(String(data?.text ?? ''));
+          const dir = await Downloads.getPreferredDownloadsDirectory();
+          const safe =
+            DownloadPaths.sanitize(String(data?.filename || 'artifact')) || 'artifact';
+          const dot = safe.lastIndexOf('.');
+          const stem = dot > 0 ? safe.slice(0, dot) : safe;
+          const ext = dot > 0 ? safe.slice(dot) : '';
+
+          let path = PathUtils.join(dir, safe);
+          for (let i = 1; i < 1000 && (await IOUtils.exists(path)); i++) {
+            path = PathUtils.join(dir, `${stem}(${i})${ext}`);
+          }
+          await IOUtils.write(path, bytes);
+          return { ok: true, path };
+        } catch (e) {
+          return { ok: false, error: String(e && e.message ? e.message : e) };
+        }
+      }
+
       case 'contentStore:get': {
         const { key } = data;
         const val = lazy.NevofluxContentStore.get(key);
