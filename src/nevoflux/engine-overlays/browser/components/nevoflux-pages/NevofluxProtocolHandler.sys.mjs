@@ -120,6 +120,26 @@ export class NevofluxProtocolHandler {
     // Pass the original loadInfo directly to preserve navigation context.
     const channel = Services.io.newChannelFromURIWithLoadInfo(targetURI, loadInfo);
     channel.originalURI = uri;
+
+    // KNOWN ISSUE: nsChromeProtocolHandler stamps every chrome://.../content/...
+    // channel with a system-principal owner (nsChromeProtocolHandler.cpp), and
+    // GetChannelResultPrincipal returns that owner before it ever consults the
+    // URI — so every nevoflux:// document, including the Canvas page that
+    // renders model-generated artifacts, runs with the system principal.
+    //
+    // Clearing `channel.owner` here does drop the chrome powers, but it does
+    // NOT produce the intended nevoflux://canvas content principal: the scheme
+    // is not backed by an nsIStandardURL, so
+    // ContentPrincipal::GenerateOriginNoSuffixFromURI fails and
+    // CreateContentPrincipal falls back to a null principal. The page then has
+    // an opaque origin (blob URLs still serialise as blob:null/...), which is
+    // not obviously better and breaks anything that needs a real origin.
+    //
+    // Doing this properly means giving the scheme standard-URL parsing, which
+    // is a change of its own that needs separate testing. Until then the page
+    // keeps the inherited system principal; the export path does not depend on
+    // it (see _downloadBlob in canvas.js, which verifies the download and
+    // falls back to a parent-side save).
     return channel;
   }
 

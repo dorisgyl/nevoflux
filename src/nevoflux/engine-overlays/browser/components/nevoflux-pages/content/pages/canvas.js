@@ -706,7 +706,7 @@ html, body { overflow: hidden; margin: 0; padding: 0; width: 100vw; height: 100v
     });
     // Split Button: left = default export
     document.getElementById('btn-export-default').addEventListener('click', () => {
-      this._exportSource();
+      this._safeExport(this._exportSource, 'source');
     });
 
     // Split Button: arrow = toggle dropdown
@@ -760,10 +760,10 @@ html, body { overflow: hidden; margin: 0; padding: 0; width: 100vw; height: 100v
       arrow.setAttribute('aria-expanded', 'false');
       const format = item.dataset.format;
       const dispatch = {
-        source:   () => this._exportSource(),
+        source:   () => this._safeExport(this._exportSource, 'source'),
         html:     () => this._safeExport(this._exportHtml, 'HTML'),
         image:    () => this._safeExport(this._exportImage, 'PNG'),
-        pdf:      () => this._exportPdf(),
+        pdf:      () => this._safeExport(this._exportPdf, 'PDF'),
         docx:     () => this._safeExport(this._exportDocx, 'DOCX'),
         svg:      () => this._safeExport(this._exportSvg, 'SVG'),
         markdown: () => this._safeExport(this._exportMarkdown, 'Markdown'),
@@ -1069,7 +1069,9 @@ html, body { overflow: hidden; margin: 0; padding: 0; width: 100vw; height: 100v
   // ── Export & Share ─────────────────────────────────────
 
   async _exportHtml() {
-    if (!this._artifact?.content) return;
+    if (!this._artifact?.content) {
+      throw new Error('this artifact has no content to export');
+    }
     const type = this._artifact.type || 'html';
     let html;
 
@@ -1104,11 +1106,13 @@ ${slidesHtml}
       html = `<!DOCTYPE html>\n<html>\n<head><meta charset="utf-8"><title>${this._escapeHtml(this._artifact.title || 'Artifact')}</title></head>\n<body><pre>${this._escapeHtml(this._artifact.content)}</pre></body>\n</html>`;
     }
 
-    this._downloadFile(html, `${this._artifact.title || 'artifact'}.html`, 'text/html');
+    await this._downloadFile(html, `${this._artifact.title || 'artifact'}.html`, 'text/html');
   },
 
-  _exportSource() {
-    if (!this._artifact?.content) return;
+  async _exportSource() {
+    if (!this._artifact?.content) {
+      throw new Error('this artifact has no content to export');
+    }
     const extMap = {
       html: 'html',
       react: 'jsx',
@@ -1122,7 +1126,7 @@ ${slidesHtml}
     const ext = extMap[this._artifact.type] || 'txt';
     const filename = `${this._artifact.title || 'artifact'}.${ext}`;
     const mime = ext === 'html' ? 'text/html' : ext === 'md' ? 'text/markdown' : 'text/plain';
-    this._downloadFile(this._artifact.content, filename, mime);
+    await this._downloadFile(this._artifact.content, filename, mime);
   },
 
   async _exportImage() {
@@ -1171,7 +1175,7 @@ ${slidesHtml}
       throw new Error(res?.error || 'capture failed');
     }
     const blob = new Blob([res.bytes], { type: 'image/png' });
-    this._downloadBlob(blob, `${this._artifact?.title || 'artifact'}.png`);
+    await this._downloadBlob(blob, `${this._artifact?.title || 'artifact'}.png`);
     if (res.downscaled) {
       this._showToast('Exported full page (scaled down to fit size limits)', 'info');
     }
@@ -1236,19 +1240,26 @@ ${slidesHtml}
     return vp?.querySelector('iframe') || document.querySelector('#viewport iframe') || null;
   },
 
-  _exportPdf() {
-    // Open clean content as a blob URL in a new tab for printing
+  /**
+   * Open the clean artifact HTML in a tab so the user can print it to PDF.
+   *
+   * This used to point a _blank anchor at a blob: URL, which lands on a blank
+   * tab wherever the blob fails to resolve in the parent — the same breakage
+   * that silently swallowed the file exports. The parent writes a temp file
+   * and opens that instead, so no blob URL is involved.
+   */
+  async _exportPdf() {
     const html = this._lastContentHtml;
-    if (!html) { this._showToast('Nothing to export', 'error'); return; }
-
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.target = '_blank';
-    a.click();
-    // Clean up after user has had time to print
-    setTimeout(() => URL.revokeObjectURL(url), 120000);
+    if (!html) {
+      throw new Error('nothing to print yet — the preview has not rendered');
+    }
+    const res = await NevofluxPage.sendQuery('canvas:openForPrint', {
+      html,
+      filename: this._artifact?.title || 'artifact',
+    });
+    if (!res || !res.ok) {
+      throw new Error(`could not open the print view: ${res?.error || 'unknown'}`);
+    }
   },
 
   async _exportDocx() {
@@ -1258,10 +1269,10 @@ ${slidesHtml}
     if (!html) { this._showToast('Nothing to export', 'error'); return; }
 
     const blob = htmlDocx.asBlob(html);
-    this._downloadBlob(blob, `${this._artifact.title || 'artifact'}.docx`);
+    await this._downloadBlob(blob, `${this._artifact.title || 'artifact'}.docx`);
   },
 
-  _exportSvg() {
+  async _exportSvg() {
     const iframeDoc = this._getPreviewDocument();
     if (!iframeDoc) { this._showToast('Nothing to export', 'error'); return; }
 
@@ -1275,7 +1286,7 @@ ${slidesHtml}
     defs.forEach(d => clone.prepend(d.cloneNode(true)));
 
     const svgString = new XMLSerializer().serializeToString(clone);
-    this._downloadFile(svgString, `${this._artifact.title || 'artifact'}.svg`, 'image/svg+xml');
+    await this._downloadFile(svgString, `${this._artifact.title || 'artifact'}.svg`, 'image/svg+xml');
   },
 
   async _exportMarkdown() {
@@ -1285,7 +1296,7 @@ ${slidesHtml}
 
     const turndownService = new TurndownService();
     const md = turndownService.turndown(iframeDoc.body.innerHTML);
-    this._downloadFile(md, `${this._artifact.title || 'artifact'}.md`, 'text/markdown');
+    await this._downloadFile(md, `${this._artifact.title || 'artifact'}.md`, 'text/markdown');
   },
 
   async _exportPptx() {
@@ -1332,7 +1343,7 @@ ${slidesHtml}
     }
 
     const blob = await pptx.write({ outputType: 'blob' });
-    this._downloadBlob(blob, `${this._artifact.title || 'presentation'}.pptx`);
+    await this._downloadBlob(blob, `${this._artifact.title || 'presentation'}.pptx`);
   },
 
   async _exportXlsx() {
@@ -1350,7 +1361,7 @@ ${slidesHtml}
     });
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    this._downloadBlob(blob, `${this._artifact.title || 'artifact'}.xlsx`);
+    await this._downloadBlob(blob, `${this._artifact.title || 'artifact'}.xlsx`);
   },
 
   async _exportZip() {
@@ -1363,30 +1374,63 @@ ${slidesHtml}
     }
 
     const blob = await zip.generateAsync({ type: 'blob' });
-    this._downloadBlob(blob, `${this._artifact.title || 'project'}.zip`);
+    await this._downloadBlob(blob, `${this._artifact.title || 'project'}.zip`);
   },
 
   _downloadFile(content, filename, mimeType) {
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    return this._downloadBlob(new Blob([content], { type: mimeType }), filename);
   },
 
-  _downloadBlob(blob, filename) {
+  /**
+   * Save a blob to disk, and make sure it actually happened.
+   *
+   * The plain anchor route silently evaporates in two known cases: the click
+   * is dropped outright when the document is editable (nsDocShell::OnLinkClick
+   * returns early for editable content), and the load fails during
+   * OnStartRequest when the blob URL cannot be resolved in the parent process.
+   * Neither surfaces an exception, so the export used to just do nothing.
+   *
+   * So: click a detached anchor (immune to the editable-document drop), then
+   * ask the parent whether a download really started, and fall back to writing
+   * the file from the parent if it did not. The user always learns the outcome.
+   */
+  async _downloadBlob(blob, filename) {
+    const since = Date.now();
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      // Deliberately NOT inserted into the document: an editable ancestor
+      // makes Gecko discard the click without a word.
+      a.click();
+    } finally {
+      // The link click is dispatched asynchronously, so the URL has to outlive
+      // this function. 60s is far longer than any handoff needs.
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+
+    const stem = String(filename).replace(/\.[^.]*$/, '').slice(0, 24);
+    let started = false;
+    try {
+      await new Promise((r) => setTimeout(r, 1200));
+      const res = await NevofluxPage.sendQuery('canvas:downloadStarted', { since, stem });
+      started = !!(res && res.ok && res.started);
+    } catch (e) {
+      console.warn('[Canvas] could not verify download:', e);
+      return; // Verification itself is broken; assume the anchor worked.
+    }
+    if (started) {
+      return;
+    }
+
+    console.warn(`[Canvas] no download appeared for "${filename}" — saving from parent`);
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const res = await NevofluxPage.sendQuery('canvas:saveFile', { filename, bytes });
+    if (!res || !res.ok) {
+      throw new Error(`Download was dropped and the fallback failed: ${res?.error || 'unknown'}`);
+    }
+    this._showToast(`Saved to ${res.path}`, 'info');
   },
 
   async _loadVendor(name) {
@@ -1421,10 +1465,22 @@ ${slidesHtml}
     const toast = document.createElement('div');
     toast.className = `export-toast export-toast-${type}`;
     toast.textContent = message;
-    toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:8px 16px;border-radius:6px;font-size:13px;z-index:9999;background:#333;color:#fff;';
-    if (type === 'error') toast.style.background = '#c0392b';
+    toast.style.cssText =
+      'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);max-width:70vw;' +
+      'padding:8px 16px;border-radius:6px;font-size:13px;z-index:9999;background:#333;' +
+      'color:#fff;cursor:pointer;word-break:break-all;';
+    toast.title = 'Click to dismiss';
+    toast.addEventListener('click', () => toast.remove());
+    if (type === 'error') {
+      toast.style.background = '#c0392b';
+    }
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
+    // Errors stay until dismissed — a 3s flash is how export failures went
+    // unnoticed. Informational messages (e.g. a saved file path) get long
+    // enough to actually read.
+    if (type !== 'error') {
+      setTimeout(() => toast.remove(), 8000);
+    }
   },
 
   _updateConditionalFormats() {
