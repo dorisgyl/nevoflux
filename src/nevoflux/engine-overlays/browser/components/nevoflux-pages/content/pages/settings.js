@@ -231,6 +231,17 @@ const Settings = {
   // ── LLM Section ─────────────────────────────────────────
 
   _llmProviders: [],
+  _customLogic: null,
+
+  /** Lazily load the DOM-free custom-provider logic (see the .mjs module). */
+  async _ensureCustomLogic() {
+    if (!this._customLogic) {
+      this._customLogic = await import(
+        'chrome://nevoflux/content/pages/custom-provider-logic.mjs'
+      );
+    }
+    return this._customLogic;
+  },
 
   _renderLLMSection() {
     const section = this._createSection('llm', 'AI Models');
@@ -262,6 +273,26 @@ const Settings = {
     agentGrid.id = 'llm-agents-grid';
     agentGroup.appendChild(agentGrid);
     section.appendChild(agentGroup);
+
+    // Custom Providers group (user-defined endpoints)
+    const customGroup = this._createGroup('Custom Providers');
+    const customDesc = document.createElement('p');
+    customDesc.className = 'section-desc';
+    customDesc.textContent =
+      'Point NevoFlux at any OpenAI-compatible or Anthropic endpoint \u2014 a self-hosted ' +
+      'model, a company gateway, or a proxy. An API key is optional; the base URL is not.';
+    customGroup.appendChild(customDesc);
+    const customGrid = document.createElement('div');
+    customGrid.className = 'llm-providers-grid';
+    customGrid.id = 'llm-custom-grid';
+    customGroup.appendChild(customGrid);
+    section.appendChild(customGroup);
+
+    // One document-level listener closes any open card menu on an outside
+    // click. Registered here so it is installed exactly once with the section.
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.llm-card-menu-popup').forEach((el) => el.remove());
+    });
 
     return section;
   },
@@ -323,6 +354,7 @@ const Settings = {
   },
 
   async _loadAndRenderProviders() {
+    await this._ensureCustomLogic();
     try {
       const data = await this._sendAgentCommand('config.llm.list');
       this._llmProviders = data?.providers || [];
@@ -336,9 +368,14 @@ const Settings = {
   _refreshLlmGrid() {
     const llmGrid = document.getElementById('llm-providers-grid');
     const agentGrid = document.getElementById('llm-agents-grid');
+    const customGrid = document.getElementById('llm-custom-grid');
     if (!llmGrid) return;
     llmGrid.innerHTML = '';
     if (agentGrid) agentGrid.innerHTML = '';
+    if (customGrid) customGrid.innerHTML = '';
+
+    // The add-card is always available, even before any provider exists.
+    if (customGrid) customGrid.appendChild(this._createAddCustomCard());
 
     const providers = this._llmProviders;
     if (!providers.length) {
@@ -349,10 +386,16 @@ const Settings = {
       return;
     }
 
+    const route = this._customLogic?.routeProviderToGrid;
     for (const provider of providers) {
-      const isAgent = provider.type === 'cli' || provider.type === 'agent';
-      const targetGrid = isAgent && agentGrid ? agentGrid : llmGrid;
-      targetGrid.appendChild(this._createProviderCard(provider));
+      const target = route ? route(provider) : 'llm';
+      if (target === 'custom' && customGrid) {
+        customGrid.appendChild(this._createCustomProviderCard(provider));
+      } else if (target === 'agents' && agentGrid) {
+        agentGrid.appendChild(this._createProviderCard(provider));
+      } else {
+        llmGrid.appendChild(this._createProviderCard(provider));
+      }
     }
   },
 
@@ -411,6 +454,149 @@ const Settings = {
 
     card.addEventListener('click', () => this._showProviderModal(provider));
     return card;
+  },
+
+  /** The dashed "+ Add Custom Provider" tile that opens an empty modal. */
+  _createAddCustomCard() {
+    const card = document.createElement('div');
+    card.className = 'llm-provider-card llm-add-card';
+    card.id = 'llm-add-custom-card';
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('aria-label', 'Add a custom provider');
+
+    const icon = document.createElement('div');
+    icon.className = 'llm-provider-icon llm-add-icon';
+    icon.textContent = '+';
+    card.appendChild(icon);
+
+    const info = document.createElement('div');
+    info.className = 'llm-provider-info';
+    const name = document.createElement('div');
+    name.className = 'llm-provider-name';
+    name.textContent = 'Add Custom Provider';
+    info.appendChild(name);
+    card.appendChild(info);
+
+    const open = () => this._showCustomProviderModal(null);
+    card.addEventListener('click', open);
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        open();
+      }
+    });
+    return card;
+  },
+
+  /** A user-defined provider card: initial on its accent, wire label, menu. */
+  _createCustomProviderCard(provider) {
+    const logic = this._customLogic;
+    const card = document.createElement('div');
+    card.className = 'llm-provider-card llm-custom-card';
+    if (provider.configured) card.classList.add('configured');
+    if (provider.active) card.classList.add('active');
+
+    const iconWrap = document.createElement('div');
+    iconWrap.className = 'llm-provider-icon';
+    if (provider.accent) {
+      iconWrap.style.background = provider.accent;
+      iconWrap.style.color = '#fff';
+    }
+    iconWrap.textContent = logic
+      ? logic.providerInitial(provider.display_name || provider.id)
+      : '?';
+    card.appendChild(iconWrap);
+
+    const info = document.createElement('div');
+    info.className = 'llm-provider-info';
+    const name = document.createElement('div');
+    name.className = 'llm-provider-name';
+    name.textContent = provider.display_name || provider.id;
+    info.appendChild(name);
+    const type = document.createElement('div');
+    type.className = 'llm-provider-type';
+    type.textContent = logic ? logic.wireLabel(provider.wire) : provider.wire || 'custom';
+    info.appendChild(type);
+    card.appendChild(info);
+
+    const status = document.createElement('div');
+    status.className = 'llm-provider-status';
+    if (provider.active) {
+      const activeBadge = document.createElement('span');
+      activeBadge.className = 'llm-badge llm-badge-active';
+      activeBadge.textContent = 'Active';
+      status.appendChild(activeBadge);
+    }
+    if (provider.configured) {
+      const checkmark = document.createElement('span');
+      checkmark.className = 'llm-checkmark';
+      checkmark.textContent = '\u2713';
+      status.appendChild(checkmark);
+    }
+    card.appendChild(status);
+
+    // Corner menu. Kept out of the card's own click target.
+    const menuBtn = document.createElement('button');
+    menuBtn.className = 'llm-card-menu';
+    menuBtn.type = 'button';
+    menuBtn.textContent = '\u22ef';
+    menuBtn.setAttribute(
+      'aria-label',
+      `Actions for ${provider.display_name || provider.id}`
+    );
+    menuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._toggleCustomCardMenu(card, provider);
+    });
+    card.appendChild(menuBtn);
+
+    card.addEventListener('click', () => this._showCustomProviderModal(provider));
+    return card;
+  },
+
+  /** Open/close the per-card Edit/Delete menu. */
+  _toggleCustomCardMenu(card, provider) {
+    const existing = card.querySelector('.llm-card-menu-popup');
+    document.querySelectorAll('.llm-card-menu-popup').forEach((el) => el.remove());
+    if (existing) return;
+
+    const popup = document.createElement('div');
+    popup.className = 'llm-card-menu-popup';
+    popup.addEventListener('click', (e) => e.stopPropagation());
+
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'llm-card-menu-item';
+    edit.textContent = 'Edit';
+    edit.addEventListener('click', (e) => {
+      e.stopPropagation();
+      popup.remove();
+      this._showCustomProviderModal(provider);
+    });
+    popup.appendChild(edit);
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'llm-card-menu-item llm-card-menu-danger';
+    del.textContent = 'Delete';
+    del.addEventListener('click', (e) => {
+      e.stopPropagation();
+      popup.remove();
+      this._confirmDeleteCustomProvider(provider);
+    });
+    popup.appendChild(del);
+
+    card.appendChild(popup);
+  },
+
+  // Replaced in full by the modal and delete-dialog implementations below.
+  _showCustomProviderModal(provider) {
+    console.warn('custom provider modal not yet implemented', provider);
+  },
+
+  _confirmDeleteCustomProvider(provider) {
+    console.warn('custom provider delete not yet implemented', provider);
   },
 
   // ── LLM Provider Modal ─────────────────────────────────
