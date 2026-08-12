@@ -923,6 +923,127 @@
       font-weight: 700;
     }
 
+    /* ── Custom Provider Cards ─────────────────────── */
+    .llm-add-card {
+      border-style: dashed;
+      background: transparent;
+    }
+
+    .llm-add-icon {
+      font-size: 20px;
+      font-weight: 400;
+    }
+
+    .llm-custom-card {
+      padding-right: calc(var(--nevoflux-space-md) + 16px);
+    }
+
+    .llm-card-menu {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: none;
+      border-radius: var(--nevoflux-radius-sm);
+      background: transparent;
+      color: var(--nevoflux-text-secondary);
+      cursor: pointer;
+      line-height: 1;
+      opacity: 0;
+      transition: opacity 0.15s ease, background-color 0.15s ease;
+    }
+
+    .llm-custom-card:hover .llm-card-menu,
+    .llm-card-menu:focus-visible {
+      opacity: 1;
+    }
+
+    .llm-card-menu:hover {
+      background: var(--nevoflux-bg-tertiary);
+      color: var(--nevoflux-text);
+    }
+
+    .llm-card-menu-popup {
+      position: absolute;
+      top: 26px;
+      right: 4px;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      min-width: 110px;
+      padding: 4px;
+      border: 1px solid var(--nevoflux-border);
+      border-radius: var(--nevoflux-radius-md);
+      background: var(--nevoflux-bg);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+    }
+
+    .llm-card-menu-item {
+      padding: 6px 10px;
+      border: none;
+      border-radius: var(--nevoflux-radius-sm);
+      background: transparent;
+      color: var(--nevoflux-text);
+      font-size: var(--nevoflux-font-size-sm);
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .llm-card-menu-item:hover {
+      background: var(--nevoflux-bg-tertiary);
+    }
+
+    .llm-card-menu-danger {
+      color: light-dark(#d93025, #f28b82);
+    }
+
+    .llm-accent-swatches {
+      display: flex;
+      gap: var(--nevoflux-space-sm);
+      flex-wrap: wrap;
+    }
+
+    .llm-accent-swatch {
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      border: 2px solid transparent;
+      border-radius: 50%;
+      cursor: pointer;
+      background: var(--nevoflux-bg-tertiary);
+    }
+
+    .llm-accent-swatch.llm-accent-default {
+      background: var(--nevoflux-bg-tertiary);
+      border-color: var(--nevoflux-border);
+    }
+
+    .llm-accent-swatch.selected {
+      border-color: var(--nevoflux-text);
+    }
+
+    .llm-accent-swatch:focus-visible {
+      outline: 2px solid var(--nevoflux-accent);
+      outline-offset: 2px;
+    }
+
+    .llm-btn-danger {
+      background: light-dark(#d93025, #f28b82);
+      color: light-dark(#fff, #202124);
+    }
+
+    .llm-btn-danger:hover {
+      background: light-dark(#b3261e, #ef9a9a);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .llm-card-menu {
+        transition: none;
+      }
+    }
+
     /* ── LLM Modal ─────────────────────────────────── */
     .llm-modal {
       display: none;
