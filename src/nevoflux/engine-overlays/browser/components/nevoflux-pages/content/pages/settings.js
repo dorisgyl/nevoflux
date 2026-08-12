@@ -590,9 +590,153 @@ const Settings = {
     card.appendChild(popup);
   },
 
-  // Replaced in full by the modal and delete-dialog implementations below.
-  _showCustomProviderModal(provider) {
-    console.warn('custom provider modal not yet implemented', provider);
+  /**
+   * Open the shared LLM modal in custom-provider mode.
+   *
+   * `provider` is a config.llm.list entry when editing, or null when creating.
+   * `_llmEditCustomId` is the mode flag the save button reads: `undefined`
+   * means "builtin provider", `null` means "creating a custom one", a string
+   * means "editing that custom one".
+   */
+  async _showCustomProviderModal(provider) {
+    await this._ensureCustomLogic();
+    this._ensureLlmModal();
+    this._llmEditProvider = null;
+    this._llmEditCustomId = provider ? provider.id : null;
+
+    document.getElementById('llm-modal-title').textContent = provider
+      ? `Edit ${provider.display_name || provider.id}`
+      : 'Add Custom Provider';
+    document.getElementById('llm-modal-subtitle').textContent =
+      'Any OpenAI-compatible or Anthropic endpoint. API key optional.';
+
+    // Builtin-only blocks off, custom block on.
+    document.getElementById('llm-modal-tos-warning').style.display = 'none';
+    document.getElementById('llm-modal-openclaw-fields').style.display = 'none';
+    document.getElementById('llm-modal-custom-fields').style.display = '';
+    document.getElementById('llm-modal-baseurl-group').style.display = '';
+
+    const status = document.getElementById('llm-modal-status');
+    status.textContent = '';
+    status.className = 'llm-modal-status';
+
+    const wire = provider?.wire || 'openai';
+    document.getElementById('llm-modal-custom-name').value = provider?.display_name || '';
+    document.getElementById('llm-modal-custom-wire').value = wire;
+    document.getElementById('llm-modal-custom-context').value = provider?.context_window ?? '';
+    document.getElementById('llm-modal-custom-streaming').checked =
+      provider?.use_streaming !== false;
+    document.getElementById('llm-modal-model').value = provider?.model || '';
+    document.getElementById('llm-modal-baseurl').value = provider?.base_url || '';
+    document.getElementById('llm-modal-set-active').checked = !!provider?.active;
+    document.getElementById('llm-modal-apikey').value = '';
+
+    this._syncCustomWireHints(wire);
+
+    // Accent selection
+    const swatches = document.getElementById('llm-modal-custom-accent');
+    swatches.querySelectorAll('.llm-accent-swatch').forEach((el) => {
+      el.classList.toggle('selected', (el.dataset.accent || '') === (provider?.accent || ''));
+    });
+
+    document.getElementById('llm-modal-baseurl-help').textContent =
+      'Required. Include the version path, e.g. https://host/v1';
+
+    // Reflect whether a key is already stored.
+    if (provider) {
+      try {
+        const data = await this._sendAgentCommand('config.llm.get', { provider: provider.id });
+        document.getElementById('llm-modal-apikey').placeholder = data?.has_api_key
+          ? `Current: ${data.api_key || 'configured'}`
+          : 'Optional \u2014 leave empty for a keyless endpoint';
+        document.getElementById('llm-modal-key-help').textContent = data?.has_api_key
+          ? 'Key is configured. Leave blank to keep current.'
+          : 'Optional. Local servers usually need no key.';
+      } catch (e) {
+        console.warn('Failed to load custom provider config:', e);
+      }
+    } else {
+      document.getElementById('llm-modal-apikey').placeholder =
+        'Optional \u2014 leave empty for a keyless endpoint';
+      document.getElementById('llm-modal-key-help').textContent =
+        'Optional. Local servers usually need no key.';
+    }
+
+    this._llmModal.classList.add('show');
+    setTimeout(() => document.getElementById('llm-modal-custom-name').focus(), 50);
+  },
+
+  /** Update the wire-dependent placeholders and defaults. */
+  _syncCustomWireHints(wire) {
+    const isAnthropic = wire === 'anthropic';
+    document.getElementById('llm-modal-model').placeholder = isAnthropic
+      ? 'e.g. claude-sonnet-4-20250514'
+      : 'e.g. gpt-4o';
+    document.getElementById('llm-modal-baseurl').placeholder = isAnthropic
+      ? 'https://host'
+      : 'https://host/v1';
+    document.getElementById('llm-modal-custom-context').placeholder = isAnthropic
+      ? '200000'
+      : '128000';
+    document.getElementById('llm-modal-custom-context-help').textContent = isAnthropic
+      ? 'Default: 200000. Sizing for the context compressor.'
+      : 'Default: 128000. Sizing for the context compressor.';
+  },
+
+  /** Create or update a custom provider from the modal's fields. */
+  async _saveCustomProvider() {
+    const logic = await this._ensureCustomLogic();
+    const statusEl = document.getElementById('llm-modal-status');
+    const saveBtn = document.getElementById('llm-modal-save');
+
+    const selectedSwatch = document
+      .getElementById('llm-modal-custom-accent')
+      .querySelector('.llm-accent-swatch.selected');
+
+    const form = {
+      displayName: document.getElementById('llm-modal-custom-name').value,
+      wire: document.getElementById('llm-modal-custom-wire').value,
+      apiKey: document.getElementById('llm-modal-apikey').value,
+      model: document.getElementById('llm-modal-model').value,
+      baseUrl: document.getElementById('llm-modal-baseurl').value,
+      contextWindow: document.getElementById('llm-modal-custom-context').value,
+      useStreaming: document.getElementById('llm-modal-custom-streaming').checked,
+      accent: selectedSwatch ? selectedSwatch.dataset.accent : '',
+      setActive: document.getElementById('llm-modal-set-active').checked,
+    };
+
+    const { ok, errors } = logic.validateCustomForm(form);
+    if (!ok) {
+      statusEl.textContent = Object.values(errors)[0];
+      statusEl.className = 'llm-modal-status error';
+      return;
+    }
+
+    const isCreate = this._llmEditCustomId === null;
+    const params = logic.buildCustomParams(form, {
+      isCreate,
+      id: this._llmEditCustomId,
+    });
+
+    saveBtn.disabled = true;
+    statusEl.textContent = 'Saving...';
+    statusEl.className = 'llm-modal-status';
+
+    try {
+      await this._sendAgentCommand(
+        isCreate ? 'config.llm.custom.create' : 'config.llm.custom.update',
+        params
+      );
+      statusEl.textContent = 'Saved successfully!';
+      statusEl.className = 'llm-modal-status success';
+      await this._populateLlmProviders();
+      setTimeout(() => this._closeLlmModal(), 600);
+    } catch (e) {
+      statusEl.textContent = `Error: ${e.message}`;
+      statusEl.className = 'llm-modal-status error';
+    } finally {
+      saveBtn.disabled = false;
+    }
   },
 
   _confirmDeleteCustomProvider(provider) {
@@ -806,6 +950,125 @@ const Settings = {
 
     form.appendChild(openclawFields);
 
+    // === Custom-provider fields (hidden for builtin providers) ===
+    const customFields = document.createElement('div');
+    customFields.id = 'llm-modal-custom-fields';
+    customFields.style.display = 'none';
+
+    // Display name
+    const cnGroup = document.createElement('div');
+    cnGroup.className = 'mcp-form-group';
+    const cnLabel = document.createElement('label');
+    cnLabel.className = 'mcp-form-label';
+    cnLabel.textContent = 'Name';
+    cnLabel.setAttribute('for', 'llm-modal-custom-name');
+    cnGroup.appendChild(cnLabel);
+    const cnInput = document.createElement('input');
+    cnInput.className = 'mcp-form-input';
+    cnInput.type = 'text';
+    cnInput.id = 'llm-modal-custom-name';
+    cnInput.placeholder = 'My LLM';
+    cnGroup.appendChild(cnInput);
+    const cnHelp = document.createElement('div');
+    cnHelp.className = 'mcp-form-help';
+    cnHelp.id = 'llm-modal-custom-name-help';
+    cnHelp.textContent = 'Shown on the card. Safe to rename later.';
+    cnGroup.appendChild(cnHelp);
+    customFields.appendChild(cnGroup);
+
+    // Wire protocol
+    const cwGroup = document.createElement('div');
+    cwGroup.className = 'mcp-form-group';
+    const cwLabel = document.createElement('label');
+    cwLabel.className = 'mcp-form-label';
+    cwLabel.textContent = 'API Type';
+    cwLabel.setAttribute('for', 'llm-modal-custom-wire');
+    cwGroup.appendChild(cwLabel);
+    const cwSelect = document.createElement('select');
+    cwSelect.className = 'mcp-form-input';
+    cwSelect.id = 'llm-modal-custom-wire';
+    for (const [value, label] of [
+      ['openai', 'OpenAI-compatible'],
+      ['anthropic', 'Anthropic'],
+    ]) {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = label;
+      cwSelect.appendChild(o);
+    }
+    cwSelect.addEventListener('change', (e) => this._syncCustomWireHints(e.target.value));
+    cwGroup.appendChild(cwSelect);
+    customFields.appendChild(cwGroup);
+
+    // Context window
+    const ccGroup = document.createElement('div');
+    ccGroup.className = 'mcp-form-group';
+    const ccLabel = document.createElement('label');
+    ccLabel.className = 'mcp-form-label';
+    ccLabel.textContent = 'Context Window';
+    ccLabel.setAttribute('for', 'llm-modal-custom-context');
+    ccGroup.appendChild(ccLabel);
+    const ccInput = document.createElement('input');
+    ccInput.className = 'mcp-form-input';
+    ccInput.type = 'number';
+    ccInput.id = 'llm-modal-custom-context';
+    ccGroup.appendChild(ccInput);
+    const ccHelp = document.createElement('div');
+    ccHelp.className = 'mcp-form-help';
+    ccHelp.id = 'llm-modal-custom-context-help';
+    ccGroup.appendChild(ccHelp);
+    customFields.appendChild(ccGroup);
+
+    // Streaming
+    const csGroup = document.createElement('div');
+    csGroup.className = 'mcp-form-group llm-active-group';
+    const csLabel = document.createElement('label');
+    csLabel.className = 'llm-active-label';
+    const csCheckbox = document.createElement('input');
+    csCheckbox.type = 'checkbox';
+    csCheckbox.id = 'llm-modal-custom-streaming';
+    const csText = document.createElement('span');
+    csText.textContent = 'Enable streaming (SSE)';
+    csLabel.appendChild(csCheckbox);
+    csLabel.appendChild(csText);
+    csGroup.appendChild(csLabel);
+    customFields.appendChild(csGroup);
+
+    // Accent colour
+    const caGroup = document.createElement('div');
+    caGroup.className = 'mcp-form-group';
+    const caLabel = document.createElement('label');
+    caLabel.className = 'mcp-form-label';
+    caLabel.textContent = 'Card Colour';
+    caGroup.appendChild(caLabel);
+    const caSwatches = document.createElement('div');
+    caSwatches.className = 'llm-accent-swatches';
+    caSwatches.id = 'llm-modal-custom-accent';
+    for (const colour of ['', '#7c5cff', '#0b8043', '#d93025', '#f9ab00', '#1a73e8', '#8430ce']) {
+      const swatch = document.createElement('button');
+      swatch.type = 'button';
+      swatch.className = 'llm-accent-swatch';
+      swatch.dataset.accent = colour;
+      swatch.setAttribute('aria-label', colour ? `Accent ${colour}` : 'Default accent');
+      if (colour) {
+        swatch.style.background = colour;
+      } else {
+        swatch.classList.add('llm-accent-default');
+      }
+      swatch.addEventListener('click', () => {
+        caSwatches
+          .querySelectorAll('.llm-accent-swatch')
+          .forEach((el) => el.classList.remove('selected'));
+        swatch.classList.add('selected');
+      });
+      caSwatches.appendChild(swatch);
+    }
+    caGroup.appendChild(caSwatches);
+    customFields.appendChild(caGroup);
+
+    form.appendChild(customFields);
+
+
     // Set as active checkbox
     const activeGroup = document.createElement('div');
     activeGroup.className = 'mcp-form-group llm-active-group';
@@ -842,7 +1105,15 @@ const Settings = {
     saveBtn.type = 'button';
     saveBtn.id = 'llm-modal-save';
     saveBtn.textContent = 'Save';
-    saveBtn.addEventListener('click', () => this._saveLlmProvider());
+    saveBtn.addEventListener('click', () => {
+      // `_llmEditCustomId` is the mode flag: undefined = builtin provider,
+      // null = creating a custom one, string = editing that custom one.
+      if (this._llmEditCustomId !== undefined) {
+        this._saveCustomProvider();
+      } else {
+        this._saveLlmProvider();
+      }
+    });
     actions.appendChild(cancelBtn);
     actions.appendChild(saveBtn);
     content.appendChild(actions);
@@ -855,6 +1126,9 @@ const Settings = {
   async _showProviderModal(provider) {
     this._ensureLlmModal();
     this._llmEditProvider = provider.id;
+    this._llmEditCustomId = undefined;
+    const customFieldsEl = document.getElementById('llm-modal-custom-fields');
+    if (customFieldsEl) customFieldsEl.style.display = 'none';
 
     const title = document.getElementById('llm-modal-title');
     title.textContent = `Configure ${provider.display_name || provider.id}`;
