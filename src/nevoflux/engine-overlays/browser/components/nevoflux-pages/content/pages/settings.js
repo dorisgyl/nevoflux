@@ -739,8 +739,79 @@ const Settings = {
     }
   },
 
-  _confirmDeleteCustomProvider(provider) {
-    console.warn('custom provider delete not yet implemented', provider);
+  /**
+   * Confirm and delete a custom provider.
+   *
+   * When the target is active the dialog names the provider that will take
+   * over, computed the same way the daemon computes it.
+   */
+  async _confirmDeleteCustomProvider(provider) {
+    const logic = await this._ensureCustomLogic();
+    const warning = logic.deleteWarning(provider, this._llmProviders);
+
+    const modal = document.createElement('div');
+    modal.className = 'llm-modal show';
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.remove();
+    });
+
+    const content = document.createElement('div');
+    content.className = 'llm-modal-content';
+
+    const header = document.createElement('div');
+    header.className = 'llm-modal-header';
+    const title = document.createElement('h2');
+    title.textContent = `Delete "${provider.display_name || provider.id}"?`;
+    header.appendChild(title);
+    content.appendChild(header);
+
+    if (warning.active) {
+      const warn = document.createElement('div');
+      warn.className = 'llm-tos-warning';
+      warn.textContent = warning.fallbackName
+        ? `It is the active provider. Deleting it switches to: ${warning.fallbackName}. ` +
+          'Its API key is removed from config.toml as well.'
+        : 'It is the active provider and nothing else is configured. Deleting it ' +
+          'leaves no active provider \u2014 the sidebar returns to setup.';
+      content.appendChild(warn);
+    }
+
+    const status = document.createElement('div');
+    status.className = 'llm-modal-status';
+    content.appendChild(status);
+
+    const actions = document.createElement('div');
+    actions.className = 'mcp-modal-actions';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'mcp-btn-secondary';
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => modal.remove());
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'mcp-btn-primary llm-btn-danger';
+    deleteBtn.type = 'button';
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.addEventListener('click', async () => {
+      deleteBtn.disabled = true;
+      status.textContent = 'Deleting...';
+      status.className = 'llm-modal-status';
+      try {
+        await this._sendAgentCommand('config.llm.custom.delete', { id: provider.id });
+        modal.remove();
+        await this._populateLlmProviders();
+      } catch (e) {
+        status.textContent = `Error: ${e.message}`;
+        status.className = 'llm-modal-status error';
+        deleteBtn.disabled = false;
+      }
+    });
+    actions.appendChild(cancelBtn);
+    actions.appendChild(deleteBtn);
+    content.appendChild(actions);
+
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+    setTimeout(() => cancelBtn.focus(), 50);
   },
 
   // ── LLM Provider Modal ─────────────────────────────────
