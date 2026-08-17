@@ -29,6 +29,16 @@ locales/firefox-l10n/
 CLAUDE.md
 .claude
 docs/plans/
+docs/adr/
+docs/design/
+src/nevoflux/extensions/nevoflux-agent/lib/p0b/
+# lib/speech/ 是产品代码,要进版本控制;只忽略里面的二进制资产。
+# ORT 的 wasm 有 13 MB —— 二进制进 git 是不可逆的,而 .gitignore 是可逆的。
+src/nevoflux/extensions/nevoflux-agent/lib/speech/ort/
+src/nevoflux/extensions/nevoflux-agent/lib/speech/fixtures/
+src/nevoflux/extensions/nevoflux-agent/lib/speech/*.onnx
+CONTEXT.md
+CONTEXT-MAP.md
 *.plan
 *_plan.md
 findings.md
