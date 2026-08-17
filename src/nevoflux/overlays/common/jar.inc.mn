@@ -17,6 +17,7 @@
         content/browser/zen-components/NevoFluxSidebarResize.mjs               (../../zen/common/modules/NevoFluxSidebarResize.mjs)
         content/browser/zen-components/NevoFluxSidebarDefault.mjs              (../../zen/common/modules/NevoFluxSidebarDefault.mjs)
         content/browser/zen-components/NevoFluxAgentAvatar.mjs                 (../../zen/common/modules/NevoFluxAgentAvatar.mjs)
+        content/browser/zen-components/NevoFluxMicPermission.mjs               (../../zen/common/modules/NevoFluxMicPermission.mjs)
 
         content/browser/zen-components/ZenEmojisData.min.mjs                    (../../zen/common/emojis/ZenEmojisData.min.mjs)
         content/browser/zen-components/ZenEmojiPicker.mjs                       (../../zen/common/emojis/ZenEmojiPicker.mjs)
