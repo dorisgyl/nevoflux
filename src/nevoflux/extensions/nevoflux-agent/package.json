@@ -16,6 +16,7 @@
     "clean": "npm run clean:wasm && rm -rf dioxus-ui/dist/"
   },
   "devDependencies": {
-    "jsdom": "^24.0.0"
+    "jsdom": "^24.0.0",
+    "onnxruntime-web": "^1.27.0"
   }
 }

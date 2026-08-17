@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>P2 · 语音上行链路</title>
+<style>
+  :root { color-scheme: light dark; --fg:#1a1a1a; --bg:#fff; --mut:#666; --line:#ddd;
+          --ok:#0a7a3d; --warn:#a05a00; --bad:#b3261e;
+          /* 语音视图的状态色。渲染器读的是这些变量,字面量只是兜底。 */
+          --nevo-voice-idle:#8a8a8e; --nevo-voice-listening:#0a7a3d;
+          --nevo-voice-thinking:#a05a00; --nevo-voice-speaking:#3b6fd4; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg:#e6e6e6; --bg:#1b1b1d; --mut:#9a9a9a; --line:#3a3a3d;
+            --ok:#5ad18a; --warn:#e0a33c; --bad:#ff6b5e;
+            --nevo-voice-idle:#8a8a8e; --nevo-voice-listening:#5ad18a;
+            --nevo-voice-thinking:#e0a33c; --nevo-voice-speaking:#7aa2f7; }
+  }
+  body { margin:0; padding:20px; font:14px/1.6 system-ui,sans-serif;
+         color:var(--fg); background:var(--bg); max-width:900px; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  h2 { font-size:12px; margin:22px 0 8px; color:var(--mut);
+       text-transform:uppercase; letter-spacing:.06em; }
+  .sub { color:var(--mut); margin:0 0 16px; }
+  button { font:14px system-ui; padding:7px 14px; cursor:pointer;
+           border:1px solid var(--line); border-radius:6px;
+           background:var(--bg); color:var(--fg); }
+  button:disabled { opacity:.45; cursor:default; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  .note { color:var(--mut); font-size:12px; }
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+  .bar { height:8px; background:var(--line); border-radius:4px; overflow:hidden;
+         width:180px; display:inline-block; vertical-align:middle; }
+  .bar > div { height:100%; width:0; background:var(--ok); transition:width .05s linear; }
+  #partial { min-height:2.4em; padding:10px 12px; border:1px dashed var(--line);
+             border-radius:8px; font-size:16px; color:var(--mut); }
+  #finals { list-style:none; padding:0; margin:0; }
+  #finals li { padding:8px 12px; border-bottom:1px solid var(--line); }
+  #finals .meta { color:var(--mut); font:11px ui-monospace,monospace; margin-left:8px; }
+  #log { height:180px; overflow:auto; border:1px solid var(--line); border-radius:6px;
+         padding:8px; font:12px ui-monospace,monospace; }
+  #log .ok{color:var(--ok)} #log .warn{color:var(--warn)} #log .bad{color:var(--bad)}
+  code { font:12px ui-monospace,monospace; }
+  #wave { border:1px solid var(--line); border-radius:8px; background:transparent;
+          width:600px; height:72px; }
+  #extras { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+  #extras .slot { font-size:12px; color:var(--mut); border-left:2px solid var(--line);
+                  padding:2px 0 2px 8px; }
+  #extras .slot b { color:var(--fg); font-weight:600; }
+  #extras .structural { font:12px ui-monospace,monospace; white-space:pre-wrap;
+                        color:var(--fg); }
+</style>
+</head>
+<body>
+
+<h1>P2 · 语音上行链路</h1>
+<p class="sub">
+  浏览器采集 + Silero VAD → native messaging → daemon 的 SenseVoice 滚动重转 →
+  partial / final。这一页验证的是 P2 的门:<b>「说话变文字」端到端可用</b>。
+</p>
+
+<div class="row">
+  <label>声源
+    <select id="source">
+      <option value="fixtures/zh.wav" selected>音频文件 · 中文</option>
+      <option value="fixtures/en.wav">音频文件 · 英文</option>
+      <option value="mic">麦克风</option>
+    </select>
+  </label>
+  <button id="start">开始</button>
+  <button id="stop" disabled>停止</button>
+  <span class="note">session <code id="sid">—</code></span>
+</div>
+
+<div class="row">
+  <span class="note">p(speech) <b id="p">0.000</b></span>
+  <span class="bar"><div id="pBar"></div></span>
+  <span class="note" id="state">未开始</span>
+</div>
+
+<h2>partial(滚动重转,永不入库)</h2>
+<div id="partial">—</div>
+
+<h2>final(端点后的权威转写)</h2>
+<ul id="finals"></ul>
+
+<h2>下行(P3)· 让它说话</h2>
+<div class="row">
+  <input id="sayText" style="flex:1;min-width:340px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)"
+         value="&lt;speak&gt;Opening hours are nine in the morning to five in the afternoon. Anything else you need?&lt;/speak&gt;The opening hours are 9am to 5pm.">
+  <button id="say" disabled>说</button>
+  <label class="note"><input type="checkbox" id="bargeIn" checked> 允许打断</label>
+  <label class="note"><input type="checkbox" id="autoSubmit"> 转写自动提问(闭环)</label>
+  <span class="note" id="turnState">—</span>
+</div>
+<p class="note">
+  <code>&lt;speak&gt;</code> 内是送 TTS 的口语稿,其余是正文 —— 拆流在 daemon 侧,标签不会进任何一路输出。
+  目前引擎是 Kokoro(<b>仅英文</b>),中文要等 P1 的 MOSS。
+  播放期间出声会触发<b>打断</b>:音频由 VAD Worker 直连音频线程停掉,不经主线程。
+</p>
+
+<h2>语音视图(Q29 / §5.2)</h2>
+<div class="row">
+  <canvas id="wave" width="600" height="72"></canvas>
+</div>
+<div class="row">
+  <span class="note">状态 <b id="waveState">idle</b></span>
+  <span class="note" id="waveCaption"></span>
+  <label class="note">模式
+    <select id="voiceMode">
+      <option value="hands-free" selected>hands-free</option>
+      <option value="tap-to-talk">tap-to-talk</option>
+    </select>
+  </label>
+  <label class="note"><input type="checkbox" id="sampleStructural"> 示例结构性内容</label>
+</div>
+<div id="extras"></div>
+<p class="note">
+  波形替代 markdown 气泡,但 <b>partial、工具状态行、artifact、结构性内容</b>四个口子仍在
+  —— 一段表格或 40 行代码再自足的口语稿也只能说「在屏幕上」,不显示这一轮的信息量就是零(ADR-0006)。
+  「在听」接麦克风流、「在说」接<b>播放流</b>:那条波形动不动,与实际有没有出声是同一件事。
+</p>
+
+<h2>日志</h2>
+<div id="log"></div>
+
+<p class="note">
+  端点静音 700 ms(Q46):说完一句要停顿约 0.7 秒才会触发 final。句内的短停顿
+  会被吃掉 —— 那正是它的目的。第一片上行带 <b>400 ms 前置音频</b>,因为等 VAD
+  说「开始了」再录,开头的声母就已经丢了。
+</p>
+<p class="note">
+  <b>音频文件模式</b>不是省事:这条链路要在没有麦克风的机器(服务器、CI)上被验证,
+  而它测的是<b>转写而非声学</b> —— 换掉声源,VAD、切片、上行、daemon 全部走同一条真实路径。
+</p>
+
+<script type="module" src="./demo.js"></script>
+</body>
+</html>
