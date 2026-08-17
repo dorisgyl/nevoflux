@@ -299,3 +299,114 @@
         console.warn('[NevoFlux] theme-follow init failed:', e);
     }
 })();
+
+// Voice input (speech-to-speech uplink/downlink) — MUST start the microphone
+// synchronously inside the click, for the same reason as the handlers above:
+// getUserMedia is gated on a user gesture, and the gesture does not survive the
+// awaits inside the speech client's startup (AudioContext + audioWorklet
+// addModule + Worker spawn). Requesting the stream here and handing it over is
+// the whole reason SpeechClient.start() accepts an existing stream.
+//
+// This handler deliberately does NOT stopPropagation: the Dioxus onclick only
+// flips a local `is_recording` signal (pure styling), so letting it run keeps
+// the button's look in sync for free. The pipeline itself lives here.
+(function initVoiceInput() {
+    let busy = false;      // 起停过程中,忽略连点
+    let syncing = false;   // 我们自己发出的 click(把按钮视觉掰回来),不当作用户操作
+
+    // 语音自行停止(静默超时、启动失败)时,Rust 那边的 is_recording 还停在
+    // "recording" —— 它只由点击翻转。补发一次 click 是唯一不改 WASM 就能把两边
+    // 状态对齐的办法。
+    function resyncButton() {
+        const btn = document.querySelector('.voice-send-button.voice-mode.recording');
+        if (!btn) return;
+        syncing = true;
+        try { btn.click(); } finally { syncing = false; }
+    }
+
+    document.addEventListener('click', function(event) {
+        const button = event.target.closest('.voice-send-button.voice-mode');
+        if (!button || syncing || busy) return;
+
+        const wasRecording = button.classList.contains('recording');
+        busy = true;
+
+        if (wasRecording) {
+            import('./nf-voice.mjs')
+                .then(m => m.stopVoice())
+                .catch(e => console.warn('[NevoFlux] voice stop failed:', e))
+                .finally(() => { busy = false; });
+            return;
+        }
+
+        // 手势还在的这一刻发起授权。await 之后再发就晚了 —— 实测表现是
+        // getUserMedia 既不 resolve 也不 reject 地挂住。
+        const pending = navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                channelCount: 1,
+            },
+        });
+
+        import('./nf-voice.mjs')
+            .then(m => pending.then(stream => m.startVoice({
+                stream,
+                sessionId: window.__nevoflux_session_id || '',
+                onStopped: resyncButton,
+            })))
+            .catch(e => {
+                console.warn('[NevoFlux] voice start failed:', e);
+                // 流可能已经开了但后面失败了:不关掉的话录音指示器会一直亮着。
+                pending.then(s => s.getTracks().forEach(t => t.stop())).catch(() => {});
+                resyncButton();
+            })
+            .finally(() => { busy = false; });
+    }, true); // capture phase
+
+    // 无人值守验证用的入口。
+    //
+    // 上面那条路要求一次真实点击,而这台机器上没有人点、也没有麦克风。用文件
+    // 代声源跑同一段接线,验证的是「侧边栏里这套接得对不对」——采集→VAD→上行→
+    // 转写→**当作一条普通消息提交**→回答出声,不是声学。
+    (async function maybeVoiceSelfTest() {
+        const params = new URLSearchParams(window.location.search);
+        if (!params.has('voicetest')) return;
+        const wait = (ms) => new Promise(r => setTimeout(r, ms));
+        try {
+            // session id 由 WASM 侧异步写进 window;它是「同一条 history」的凭据,
+            // 等不到就不是一次有意义的验证。
+            for (let i = 0; i < 100 && !window.__nevoflux_session_id; i++) await wait(200);
+            const sessionId = window.__nevoflux_session_id || '';
+            const m = await import('./nf-voice.mjs');
+            await m.startVoice({
+                fileUrl: new URL('../../lib/speech/fixtures/zh.wav', import.meta.url).href,
+                sink: 'stream',
+                sessionId,
+            });
+
+            // 上行:等一条被采纳的转写提交出去。
+            let up = null;
+            for (let i = 0; i < 120; i++) {
+                await wait(500);
+                const st = m.stats();
+                if (st.submitted > 0) { up = st; break; }
+            }
+
+            // 下行:直接让它念一段英文。回答本身是否出声取决于 agent 用什么语言
+            // 作答 —— Kokoro 只会英文,中文要等 P1 的 MOSS,那是模型的缺口,
+            // 不是接线的。所以这一段单独验证播放通路。
+            m.speak('<speak>Voice input is wired into the sidebar.</speak>Wired.');
+            for (let i = 0; i < 60; i++) {
+                await wait(500);
+                if (m.stats().played > 0) break;
+            }
+
+            const verdict = { sessionId: !!sessionId, uplink: up, final: m.stats() };
+            console.log('[VOICE-TEST]', JSON.stringify(verdict));
+        } catch (e) {
+            console.log('[VOICE-TEST]', JSON.stringify({ error: String(e && e.message || e) }));
+        }
+    })();
+})();
