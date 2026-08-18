@@ -1463,6 +1463,68 @@
       color: var(--zen-branding-bg-reverse);
     }
 
+    /* ── Speech Models (P0.5) ────────────────────── */
+    .speech-model-row {
+      padding: var(--nevoflux-space-sm) 0;
+      border-bottom: 1px solid var(--nevoflux-border);
+    }
+
+    .speech-model-row:last-child { border-bottom: none; }
+
+    .speech-model-head {
+      display: flex;
+      align-items: center;
+      gap: var(--nevoflux-space-sm);
+    }
+
+    .speech-model-label {
+      display: flex;
+      align-items: baseline;
+      gap: var(--nevoflux-space-sm);
+      flex: 1;
+      min-width: 0;
+    }
+
+    .speech-model-name { font-weight: 500; }
+
+    .speech-model-size,
+    .speech-model-state {
+      color: var(--nevoflux-text-secondary);
+      font-size: var(--nevoflux-font-size-sm);
+    }
+
+    /* Fixed width so the row does not jump on every progress frame. */
+    .speech-model-state {
+      min-width: 11em;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .speech-model-hint {
+      margin: 0.2em 0 0;
+      color: var(--nevoflux-text-secondary);
+      font-size: var(--nevoflux-font-size-sm);
+    }
+
+    .speech-model-bar {
+      height: 4px;
+      margin-top: var(--nevoflux-space-sm);
+      border-radius: 2px;
+      background: var(--nevoflux-bg-tertiary);
+      overflow: hidden;
+    }
+
+    .speech-model-fill {
+      height: 100%;
+      width: 0;
+      background: var(--zen-primary-color, currentColor);
+      transition: width 0.2s linear;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .speech-model-fill { transition: none; }
+    }
+
     /* ── Knowledge Base Section (M4-1) ────────────── */
     .kb-status-row {
       display: flex;

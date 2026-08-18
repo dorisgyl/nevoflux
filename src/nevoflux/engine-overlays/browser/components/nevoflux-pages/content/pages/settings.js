@@ -180,6 +180,8 @@ const Settings = {
     );
     section.appendChild(sidebarGroup);
 
+    section.appendChild(this._renderSpeechModelsGroup());
+
     // ── Markdown config sections ──
     for (const md of this._mdSections) {
       const group = this._createGroup(md.title);
@@ -3047,6 +3049,269 @@ const Settings = {
     section.className = 'settings-section';
     section.id = `section-${id}`;
     return section;
+  },
+
+  // ── Speech models (P0.5) ────────────────────────────────
+  //
+  // Voice needs about 240 MB before it can hear anything and another 120 MB
+  // before it can answer out loud. Until now those arrived through a developer
+  // recipe (`just fetch-asr-models`), which serves nobody without a checkout.
+  //
+  // Two tiers, downloaded separately and on request. The daemon does the
+  // fetching (`models.status` / `models.download` / `models.cancel`) and
+  // streams progress on `system:models:progress` — the same shape as the KB
+  // install wizard, because it is the same problem: a long job whose progress
+  // cannot fit in a request/response round trip.
+
+  _speechModelTiers: [
+    {
+      id: 'transcribe',
+      title: 'Speech input',
+      desc: 'Recognises what you say. Voice input needs this.',
+    },
+    {
+      id: 'speak',
+      title: 'Spoken replies',
+      desc: 'Reads answers aloud. English only for now.',
+    },
+  ],
+
+  _renderSpeechModelsGroup() {
+    const group = this._createGroup('Speech Models');
+
+    const desc = document.createElement('p');
+    desc.className = 'section-desc';
+    desc.textContent =
+      'Downloaded on request and kept in ~/.cache/nevoflux/models. ' +
+      'Each file is checked against a pinned size and digest, and an ' +
+      'interrupted download resumes where it stopped.';
+    group.appendChild(desc);
+
+    this._speechModelRows = {};
+    for (const tier of this._speechModelTiers) {
+      const row = document.createElement('div');
+      row.className = 'speech-model-row';
+      row.dataset.tier = tier.id;
+
+      const head = document.createElement('div');
+      head.className = 'speech-model-head';
+
+      const label = document.createElement('div');
+      label.className = 'speech-model-label';
+      const name = document.createElement('span');
+      name.className = 'speech-model-name';
+      name.textContent = tier.title;
+      const size = document.createElement('span');
+      size.className = 'speech-model-size';
+      label.append(name, size);
+
+      const state = document.createElement('span');
+      state.className = 'speech-model-state';
+      state.textContent = 'Checking…';
+
+      const button = document.createElement('button');
+      button.className = 'btn-secondary speech-model-button';
+      button.textContent = 'Download';
+      button.disabled = true;
+      button.addEventListener('click', () => this._speechModelButtonClicked(tier.id));
+
+      head.append(label, state, button);
+
+      const hint = document.createElement('p');
+      hint.className = 'speech-model-hint';
+      hint.textContent = tier.desc;
+
+      const bar = document.createElement('div');
+      bar.className = 'speech-model-bar';
+      bar.hidden = true;
+      const fill = document.createElement('div');
+      fill.className = 'speech-model-fill';
+      bar.appendChild(fill);
+
+      row.append(head, hint, bar);
+      group.appendChild(row);
+
+      this._speechModelRows[tier.id] = { row, size, state, button, bar, fill, ready: false };
+    }
+
+    // Kick off after the section is mounted; the RPC is async and the group
+    // has to exist before its rows can be filled in.
+    setTimeout(() => {
+      this._speechModelsRefresh();
+      this._speechModelsEnsureSubscribed();
+    }, 0);
+
+    return group;
+  },
+
+  _speechModelBytes(n) {
+    if (!n) return '0 MB';
+    const mb = n / (1024 * 1024);
+    return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
+  },
+
+  async _speechModelsRefresh() {
+    let data;
+    try {
+      data = await this._sendMcpCommand('models.status', {});
+    } catch (e) {
+      // On a cold start the page is ready before the bridge is, and the first
+      // call fails with "no handler registered". Giving up here leaves the
+      // panel reading "Agent not reachable" for a daemon that came up two
+      // seconds later — so retry before believing it.
+      try {
+        data = await this._retryWithBackoff(() => this._sendMcpCommand('models.status', {}));
+      } catch (e2) {
+        console.warn('[models] status unavailable:', e2);
+        for (const id of Object.keys(this._speechModelRows || {})) {
+          const r = this._speechModelRows[id];
+          r.state.textContent = 'Agent not reachable';
+          r.button.disabled = true;
+        }
+        return;
+      }
+    }
+    for (const tier of data?.tiers || []) {
+      const r = this._speechModelRows?.[tier.id];
+      if (!r) continue;
+      r.ready = !!tier.ready;
+      r.size.textContent = this._speechModelBytes(tier.bytes);
+      if (tier.downloading) {
+        this._speechModelSetRunning(tier.id, tier.bytes - tier.remaining, tier.bytes);
+      } else if (tier.ready) {
+        r.state.textContent = 'Ready';
+        r.button.textContent = 'Download';
+        r.button.disabled = true;
+        r.bar.hidden = true;
+      } else {
+        // A resumable partial is worth saying: the number the user sees next
+        // time will start well above zero, and unexplained progress is its own
+        // kind of confusing.
+        const done = tier.bytes - tier.remaining;
+        r.state.textContent =
+          done > 0 ? `Paused at ${this._speechModelBytes(done)}` : 'Not downloaded';
+        r.button.textContent = done > 0 ? 'Resume' : 'Download';
+        r.button.disabled = false;
+        r.bar.hidden = true;
+      }
+    }
+  },
+
+  _speechModelSetRunning(tierId, done, total) {
+    const r = this._speechModelRows?.[tierId];
+    if (!r) return;
+    r.state.textContent = `${this._speechModelBytes(done)} of ${this._speechModelBytes(total)}`;
+    r.button.textContent = 'Cancel';
+    r.button.disabled = false;
+    r.bar.hidden = false;
+    r.fill.style.width = total ? `${Math.min(100, (done / total) * 100)}%` : '0%';
+    r.running = true;
+  },
+
+  // Subscribe once, best effort, and try again whenever a download is about to
+  // start. The subscription is what turns a download into visible progress; a
+  // failed one at page load must not mean the next hour of downloading is
+  // invisible.
+  async _speechModelsEnsureSubscribed() {
+    if (this._speechModelsSubscribed) return true;
+    try {
+      await this._speechModelsSubscribe();
+      this._speechModelsSubscribed = true;
+      return true;
+    } catch (e) {
+      console.warn('[models] progress subscribe failed:', e);
+      return false;
+    }
+  },
+
+  async _speechModelButtonClicked(tierId) {
+    const r = this._speechModelRows?.[tierId];
+    if (!r) return;
+    const command = r.running ? 'models.cancel' : 'models.download';
+    r.button.disabled = true;
+    if (command === 'models.download') {
+      const subscribed = await this._speechModelsEnsureSubscribed();
+      if (!subscribed) {
+        // Say it rather than showing a bar that will never move.
+        r.state.title = 'Progress updates unavailable; the download still runs.';
+      }
+    }
+    try {
+      await this._sendMcpCommand(command, { tier: tierId });
+      if (command === 'models.download') {
+        this._speechModelSetRunning(tierId, 0, 0);
+        r.state.textContent = 'Starting…';
+      }
+    } catch (e) {
+      r.state.textContent = `Failed: ${e.message}`;
+    } finally {
+      r.button.disabled = false;
+      if (command === 'models.cancel') {
+        r.running = false;
+        this._speechModelsRefresh();
+      }
+    }
+  },
+
+  _speechModelsOnProgress(frame) {
+    const r = this._speechModelRows?.[frame?.tier];
+    if (!r) return;
+    if (frame.status === 'running') {
+      this._speechModelSetRunning(frame.tier, frame.done, frame.total);
+      return;
+    }
+    r.running = false;
+    if (frame.status === 'failed') {
+      // The daemon's message names every source it tried and what each said.
+      // Truncating that to "download failed" would remove the only part a
+      // user can act on.
+      r.state.textContent = 'Failed';
+      r.state.title = frame.message || '';
+      r.button.textContent = 'Retry';
+      r.button.disabled = false;
+      r.bar.hidden = true;
+      return;
+    }
+    this._speechModelsRefresh();
+  },
+
+  async _speechModelsSubscribe() {
+    // Same two-step as the KB wizard: a persistent EventBus channel, then
+    // subscribe through the bridge. The channel is what keeps frames arriving
+    // past bridge:request's short push grace window.
+    const channelId = 'models_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    await NevofluxPage.sendQuery('events:channel_open', { channelId });
+
+    const listener = (event) => {
+      const detail = event.detail;
+      if (!detail || detail.type !== 'bridge:push') return;
+      const msg = detail.msg;
+      if (!msg || msg.type !== 'events:delivery') return;
+      const ev = msg.payload?.event;
+      if (!ev || ev.topic !== 'system:models:progress') return;
+      try {
+        this._speechModelsOnProgress(ev.payload);
+      } catch (err) {
+        console.warn('[models] progress handler failed:', err);
+      }
+    };
+    window.addEventListener('NevofluxMessage', listener);
+
+    const res = await NevofluxPage.sendQuery('bridge:request', {
+      type: 'events.subscribe',
+      payload: {
+        patterns: ['system:models:progress'],
+        replay_sticky: false,
+        channel_id: channelId,
+      },
+    });
+    if (!res || res.success === false) {
+      window.removeEventListener('NevofluxMessage', listener);
+      try {
+        await NevofluxPage.sendQuery('events:channel_close', { channelId });
+      } catch (_e) {}
+      throw new Error(res?.error?.message || 'events.subscribe failed');
+    }
   },
 
   _createGroup(title) {
