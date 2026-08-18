@@ -203,6 +203,9 @@ function onEvent(e, onStopped) {
       break;
     case 'error':
       stat.error = e.message;
+      // The daemon's "model not found" already names where to get it; anything
+      // else is shown as-is. Rewriting arbitrary errors into a friendlier
+      // sentence is how the one detail that identifies the problem gets lost.
       say(e.message, true);
       break;
     case 'stopped':
@@ -254,10 +257,11 @@ export async function startVoice(opts = {}) {
     return client;
   } catch (e) {
     say(`语音启动失败:${e && e.message ? e.message : e}`, true);
-    // 资产缺失(ORT / silero 权重没下)是最常见的一种,单独点名 —— 否则
-    // 用户看到的是一句无从下手的 fetch 报错。
+    // 浏览器侧的资产(ORT / silero)随扩展一起打包,缺失只可能发生在开发树里;
+    // daemon 侧的 ASR 权重则是用户要下的那份,由「设置 → 语音模型」负责。
+    // 两种缺失的补法不同,所以报错也不能混成一句。
     if (String(e).includes('backend') || String(e).includes('fetch')) {
-      say('语音启动失败:语音模型未就绪(运行 scripts/fetch-speech-assets.sh)', true);
+      say('语音启动失败:浏览器侧语音资产未就绪(开发树:scripts/fetch-speech-assets.sh)', true);
     }
     await stopVoice();
     opts.onStopped?.();
