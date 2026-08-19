@@ -529,7 +529,14 @@ export class SpeechClient {
         break;
       case 'voice_done':
         this.idle?.endBusy();
-        this.emit('turn-done', { turnId: p.turn_id, spoken: p.spoken });
+        // 带上引擎与回落原因:对英文用户回落是换个音色,对中文用户是从有声
+        // 变没声,所以这条不能只写进日志。
+        this.emit('turn-done', {
+          turnId: p.turn_id,
+          spoken: p.spoken,
+          engine: p.engine,
+          engineReason: p.engine_reason,
+        });
         break;
       case 'voice_failed':
         this.emit('error', { message: p.message, turnId: p.turn_id });

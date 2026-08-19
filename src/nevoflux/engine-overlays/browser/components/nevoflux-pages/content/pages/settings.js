@@ -181,6 +181,7 @@ const Settings = {
     section.appendChild(sidebarGroup);
 
     section.appendChild(this._renderSpeechModelsGroup());
+    section.appendChild(this._renderSpeechVoiceGroup());
 
     // ── Markdown config sections ──
     for (const md of this._mdSections) {
@@ -3072,7 +3073,14 @@ const Settings = {
     {
       id: 'speak',
       title: 'Spoken replies',
-      desc: 'Reads answers aloud. English only for now.',
+      desc: 'Reads answers aloud. English only — a small fallback voice.',
+    },
+    {
+      id: 'speak-multilingual',
+      title: 'Natural voice',
+      desc:
+        'Speaks Chinese and 19 other languages, and sounds markedly better. ' +
+        'Large; the fallback above works without it.',
     },
   ],
 
@@ -3312,6 +3320,96 @@ const Settings = {
       } catch (_e) {}
       throw new Error(res?.error?.message || 'events.subscribe failed');
     }
+  },
+
+  // ── Voice (P1) ──────────────────────────────────────────
+  //
+  // The list comes from the daemon (`speech.voices`), not from here: which
+  // voices exist depends on which engine will actually speak, and offering
+  // MOSS's eighteen while Kokoro is the one running lets someone pick a voice
+  // that silently does nothing.
+
+  _renderSpeechVoiceGroup() {
+    const group = this._createGroup('Voice');
+
+    const line = document.createElement('p');
+    line.className = 'section-desc';
+    line.id = 'speech-engine-line';
+    line.textContent = 'Checking which engine will speak…';
+    group.appendChild(line);
+
+    const row = document.createElement('div');
+    row.className = 'form-row';
+    const label = document.createElement('label');
+    label.textContent = 'Voice';
+    const select = document.createElement('select');
+    select.id = 'speech-voice-select';
+    select.disabled = true;
+    select.addEventListener('change', () =>
+      this._onFieldChange('general.speechVoice', select.value)
+    );
+    row.append(label, select);
+    group.appendChild(row);
+
+    setTimeout(() => this._speechVoicesRefresh(), 0);
+    return group;
+  },
+
+  async _speechVoicesRefresh() {
+    const line = document.getElementById('speech-engine-line');
+    const select = document.getElementById('speech-voice-select');
+    if (!line || !select) return;
+
+    let data;
+    try {
+      data = await this._retryWithBackoff(() => this._sendMcpCommand('speech.voices', {}));
+    } catch (e) {
+      line.textContent = 'Agent not reachable; voices unavailable.';
+      return;
+    }
+
+    // The reason is the whole point of showing this at all: for an English
+    // speaker the fallback is a different voice, for a Chinese speaker it is
+    // no voice, and neither should have to guess which engine they got.
+    const rtf = typeof data.measured_rtf === 'number' ? ` (${data.measured_rtf.toFixed(2)}x real time)` : '';
+    if (data.engine === 'moss') {
+      line.textContent = `Speaking with MOSS — multilingual${rtf}.`;
+    } else if (data.engine === 'kokoro') {
+      line.textContent = `Speaking with Kokoro, English only. ${data.reason || ''}`.trim();
+    } else {
+      line.textContent = data.reason || 'No speech engine is available.';
+    }
+
+    select.textContent = '';
+    const voices = data.voices || [];
+    if (!voices.length) {
+      select.disabled = true;
+      const opt = document.createElement('option');
+      opt.textContent = 'No voices available';
+      select.appendChild(opt);
+      return;
+    }
+    // Grouped, because eighteen voices in one flat list is a wall of names.
+    const groups = new Map();
+    for (const v of voices) {
+      const key = v.group || 'Voices';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(v);
+    }
+    for (const [name, members] of groups) {
+      const og = document.createElement('optgroup');
+      og.label = name;
+      for (const v of members) {
+        const opt = document.createElement('option');
+        opt.value = v.id;
+        opt.textContent = v.name || v.id;
+        og.appendChild(opt);
+      }
+      select.appendChild(og);
+    }
+    select.disabled = false;
+    const current = this._settings?.general?.speechVoice;
+    if (current && voices.some((v) => v.id === current)) select.value = current;
   },
 
   _createGroup(title) {
