@@ -194,6 +194,12 @@ function onEvent(e, onStopped) {
       if (e.what === 'scheduled') setState('speaking');
       break;
     case 'turn-done':
+      // 只有回落时才有原因。有的话就说出来 —— 否则用户听到的是英文腔的中文,
+      // 或者干脆没声音,而界面上一切正常。
+      if (e.engineReason) {
+        stat.engine = e.engine || '';
+        say(`已改用${e.engine === 'kokoro' ? 'Kokoro(仅英文)' : e.engine}:${e.engineReason}`, true);
+      }
       break;
     case 'barge-in':
       setState('listening');
