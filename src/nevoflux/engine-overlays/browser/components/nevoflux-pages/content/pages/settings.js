@@ -3351,6 +3351,18 @@ const Settings = {
     row.append(label, select);
     group.appendChild(row);
 
+    // §5.2:纯渲染层开关。正文照常生成、入库、可搜索,只是当前会话不显示气泡
+    // —— 所以它是偏好,不是模式,与 hands-free / tap-to-talk 正交。
+    // `_createToggleRow` takes no hint argument; passing one would have been
+    // silently dropped, so the explanation is its own line.
+    group.appendChild(this._createToggleRow('Voice view', 'general.voiceView', false));
+    const viewHint = document.createElement('p');
+    viewHint.className = 'section-desc';
+    viewHint.textContent =
+      'Replaces message bubbles with a waveform while voice is on. Replies are ' +
+      'still generated, saved and searchable — only this view changes.';
+    group.appendChild(viewHint);
+
     setTimeout(() => this._speechVoicesRefresh(), 0);
     return group;
   },

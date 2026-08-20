@@ -380,10 +380,14 @@
             for (let i = 0; i < 100 && !window.__nevoflux_session_id; i++) await wait(200);
             const sessionId = window.__nevoflux_session_id || '';
             const m = await import('./nf-voice.mjs');
+            // 视图开关由参数强制,而不是靠设置里恰好开着:自检要测的是「开了以后
+            // 气泡是不是真的看不见」,不是「设置里现在是什么」。
+            const wantView = params.get('voiceview') === '1';
             await m.startVoice({
                 fileUrl: new URL('../../lib/speech/fixtures/zh.wav', import.meta.url).href,
                 sink: 'stream',
                 sessionId,
+                ...(wantView ? { voiceView: true } : {}),
             });
 
             // 上行:等一条被采纳的转写提交出去。
@@ -403,7 +407,14 @@
                 if (m.stats().played > 0) break;
             }
 
-            const verdict = { sessionId: !!sessionId, uplink: up, final: m.stats() };
+            const verdict = {
+                sessionId: !!sessionId,
+                uplink: up,
+                final: m.stats(),
+                // 视图开着却没把气泡藏起来,是这次改动唯一会静默失败的方式:
+                // 波形会铺在气泡上面,两层内容叠着而没人报错。
+                voiceViewRequested: wantView,
+            };
             console.log('[VOICE-TEST]', JSON.stringify(verdict));
         } catch (e) {
             console.log('[VOICE-TEST]', JSON.stringify({ error: String(e && e.message || e) }));
