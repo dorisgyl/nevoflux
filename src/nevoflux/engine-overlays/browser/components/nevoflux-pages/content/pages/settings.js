@@ -3332,11 +3332,38 @@ const Settings = {
   _renderSpeechVoiceGroup() {
     const group = this._createGroup('Voice');
 
+    const engineRow = document.createElement('div');
+    engineRow.className = 'speech-model-head';
+
     const line = document.createElement('p');
     line.className = 'section-desc';
     line.id = 'speech-engine-line';
+    line.style.flex = '1';
+    line.style.margin = '0';
     line.textContent = 'Checking which engine will speak…';
-    group.appendChild(line);
+
+    // The way out of a bad measurement. Without it, a machine judged too slow
+    // once never runs the engine again, so it never measures again, and the
+    // only escape was editing config.toml by hand.
+    const remeasure = document.createElement('button');
+    remeasure.className = 'btn-secondary';
+    remeasure.id = 'speech-remeasure';
+    remeasure.textContent = 'Re-measure';
+    remeasure.hidden = true;
+    remeasure.addEventListener('click', async () => {
+      remeasure.disabled = true;
+      try {
+        await this._sendMcpCommand('speech.reset_rtf', {});
+        line.textContent = 'Cleared — the next reply will be spoken by the multilingual engine.';
+      } catch (e) {
+        line.textContent = `Could not clear the measurement: ${e.message}`;
+      } finally {
+        remeasure.disabled = false;
+      }
+    });
+
+    engineRow.append(line, remeasure);
+    group.appendChild(engineRow);
 
     const row = document.createElement('div');
     row.className = 'form-row';
@@ -3383,7 +3410,14 @@ const Settings = {
     // The reason is the whole point of showing this at all: for an English
     // speaker the fallback is a different voice, for a Chinese speaker it is
     // no voice, and neither should have to guess which engine they got.
-    const rtf = typeof data.measured_rtf === 'number' ? ` (${data.measured_rtf.toFixed(2)}x real time)` : '';
+    // Show the samples behind the verdict, not just the verdict: a single
+    // number invites "that can't be right", and the spread answers it.
+    const samples = Array.isArray(data.recent_rtf) ? data.recent_rtf : [];
+    const spread = samples.length > 1 ? ` from ${samples.map((v) => v.toFixed(2)).join(', ')}` : '';
+    const rtf =
+      typeof data.measured_rtf === 'number'
+        ? ` (${data.measured_rtf.toFixed(2)}x real time${spread})`
+        : '';
     if (data.engine === 'moss') {
       line.textContent = `Speaking with MOSS — multilingual${rtf}.`;
     } else if (data.engine === 'kokoro') {
@@ -3391,6 +3425,9 @@ const Settings = {
     } else {
       line.textContent = data.reason || 'No speech engine is available.';
     }
+    // Only worth offering when a measurement is what is holding it back.
+    const remeasure = document.getElementById('speech-remeasure');
+    if (remeasure) remeasure.hidden = typeof data.measured_rtf !== 'number';
 
     select.textContent = '';
     const voices = data.voices || [];
