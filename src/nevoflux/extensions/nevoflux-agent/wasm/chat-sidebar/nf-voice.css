@@ -67,3 +67,35 @@
   /* 波形是状态指示,不是装饰:不能整条去掉,只压掉幅度变化的观感。 */
   .nf-voice-wave { opacity: .85; }
 }
+
+/*
+ * 语音视图(§5.2)。
+ *
+ * 波形替代 markdown 气泡 —— 用样式隐藏,而不是让 Dioxus 不渲染。
+ *
+ * 设计原文就是「纯渲染层开关,绝不影响生成与存储」:正文照常生成、照常入库、
+ * 照常可搜索,只是当前会话不显示气泡。而渲染器与四个展示位本来就在 JS 侧,
+ * 让 Dioxus 与这段代码争同一块 DOM,才会撞上「插进 #main 的节点下一次 diff
+ * 就被移走」那个坑。各管各的:Dioxus 管 #main 的内容,这里只管看不看得见。
+ */
+
+:root[data-nf-voice-view="on"] .message-list {
+  visibility: hidden;
+}
+
+/* 铺满面板。语音条平时是底部一条,视图模式下它就是主界面。 */
+:root[data-nf-voice-view="on"] .nf-voice {
+  top: 8px;
+  justify-content: center;
+  gap: 12px;
+}
+
+:root[data-nf-voice-view="on"] .nf-voice-wave {
+  height: 96px;
+}
+
+:root[data-nf-voice-view="on"] .nf-voice-partial {
+  font-size: 15px;
+  text-align: center;
+  white-space: normal;
+}

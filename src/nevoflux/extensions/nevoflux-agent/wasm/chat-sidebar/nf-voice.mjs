@@ -20,6 +20,15 @@
 
 const SPEECH_BASE = '../../lib/speech/';
 
+/// 气泡本身。样式那边靠它把气泡藏起来。
+const BUBBLES = '.message-list';
+/// 消息区容器 —— 无论有没有消息都在。
+///
+/// 守卫要盯的是它,不是气泡:全新会话显示的是欢迎屏,`.message-list` 还不存在,
+/// 而「这一刻没有气泡」与「类名改了」是两件完全不同的事。第一版盯错了元素,
+/// 于是在空会话里打开语音视图会直接把视图关掉。
+const MESSAGE_AREA = '.message-area';
+
 let client = null;
 /**
  * 我们自己开的麦克风流。
@@ -44,6 +53,34 @@ const view = {
 /** 只用于诊断:这条链路的失败大多是静默的,没有计数就只能靠「感觉没反应」。 */
 const stat = { finals: 0, accepted: 0, submitted: 0, spoken: 0, error: '' };
 
+/**
+ * 用户有没有开语音视图(§5.2 的 `general.voiceView`)。
+ *
+ * 每次开语音时现读,而不是启动时读一次缓存:设置页可能正开着,而一个「要重启
+ * 才生效」的开关,在用户看来就是不生效。
+ */
+async function voiceViewEnabled() {
+  try {
+    const res = await browser.runtime.sendMessage({ type: 'bg:get_settings', key: 'settings' });
+    return res?.success === true && res.data?.general?.voiceView === true;
+  } catch {
+    return false;
+  }
+}
+
+/** 开关语音视图。返回是否真的生效 —— 类名对不上时不能假装成功。 */
+function setVoiceView(on) {
+  const root = document.documentElement;
+  if (!on) {
+    delete root.dataset.nfVoiceView;
+    return true;
+  }
+  root.dataset.nfVoiceView = 'on';
+  // 样式规则挂在 Dioxus 那边的类名上,改名之后这里会静默变成「什么都没隐藏」
+  // —— 波形铺在气泡上面,两层内容叠着而没人报错。说出来。
+  return !!document.querySelector(MESSAGE_AREA);
+}
+
 /** 语音是否正在跑。按钮的视觉状态由 Dioxus 自己翻,这里是**真相**。 */
 export function isActive() {
   return !!client;
@@ -51,7 +88,21 @@ export function isActive() {
 
 /** 计数快照。无人值守验证读它,人也可以在控制台读它。 */
 export function stats() {
-  return { ...stat, active: !!client, state: view.state, played: client?.played ?? 0 };
+  const bubbles = document.querySelector(BUBBLES);
+  return {
+    ...stat,
+    active: !!client,
+    state: view.state,
+    played: client?.played ?? 0,
+    voiceView: document.documentElement.dataset.nfVoiceView === 'on',
+    // 三态而不是布尔:「还没有气泡」与「有气泡但没藏住」都会让布尔值是 false,
+    // 而前者正常、后者是 bug。
+    bubbles: !bubbles
+      ? 'none'
+      : getComputedStyle(bubbles).visibility === 'hidden'
+        ? 'hidden'
+        : 'visible',
+  };
 }
 
 /** 让 agent 念一段话。`<speak>` 拆流在 daemon 侧。 */
@@ -219,6 +270,7 @@ function onEvent(e, onStopped) {
       // stopVoice(),所以释放必须挂在这里而不是只挂在停止按钮上。
       client = null;
       releaseStream();
+      setVoiceView(false);
       setState('idle');
       onStopped?.();
       break;
@@ -256,6 +308,13 @@ export async function startVoice(opts = {}) {
       autoSubmit: true,
       onEvent: (e) => onEvent(e, opts.onStopped),
     });
+    // 视图开关在链路起来之前定,免得先看见气泡再被换掉。
+    const wantView = opts.voiceView ?? (await voiceViewEnabled());
+    if (wantView && !setVoiceView(true)) {
+      say('语音视图未生效:找不到消息区(界面结构变了)', true);
+    }
+    
+
     ownedStream = opts.stream || null;
     await client.start(
       opts.fileUrl ? { fileUrl: opts.fileUrl, sink: opts.sink } : { stream: opts.stream },
@@ -285,6 +344,7 @@ export async function stopVoice() {
     /* 已经停了 */
   }
   releaseStream();
+  setVoiceView(false);
   setState('idle');
   if (ui) {
     clearTimeout(statusTimer);
