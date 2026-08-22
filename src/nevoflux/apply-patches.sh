@@ -427,6 +427,24 @@ AGENT_DST="${ENGINE_DIR}/browser/extensions/nevoflux-agent"
 if [ -d "${AGENT_SRC}" ]; then
   echo "Installing nevoflux-agent as built-in extension..."
   mkdir -p "${AGENT_DST}"
+
+  # 浏览器侧语音资产(ORT + silero-vad.onnx)是 .gitignore 掉的构建期资产,而
+  # 下面拷的是 lib/ 整个目录、jar.mn 打的是 lib/** —— 也就是说,它们必须在这一行
+  # 之前落到磁盘上,否则就是打不进包。
+  #
+  # 漏掉不会有任何构建期报错:包照出、体积照样正常,只有用户点麦克风时才发现。
+  # 而那时的症状是 "vad worker: undefined" —— vad-worker.js 的静态 import
+  # (./ort/ort.wasm.bundle.min.mjs)取不到,模块 worker 加载失败,Firefox 派发
+  # 的是没有 .message 的普通 Event。0.3.15 及之前每一个包都是这样发出去的。
+  FETCH_SPEECH="${ROOT_DIR}/scripts/fetch-speech-assets.sh"
+  if [ -f "${FETCH_SPEECH}" ]; then
+    echo "  Fetching browser-side speech assets..."
+    bash "${FETCH_SPEECH}" --ship
+  else
+    echo "  !! ${FETCH_SPEECH} not found — voice will ship broken" >&2
+    exit 1
+  fi
+
   # Copy each runtime entry individually so we don't clobber the moz.build /
   # jar.mn that step 4 already placed from engine-overlays.
   for entry in manifest.json background content icons lib scripts utils wasm; do

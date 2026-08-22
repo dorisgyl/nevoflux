@@ -39,6 +39,28 @@ function toBase64(buffer) {
   return btoa(s);
 }
 
+/**
+ * 把 Worker 的 error 事件翻成一句人话。
+ *
+ * 两种 error 长得完全不一样,补法也不一样:
+ *
+ *   - worker 内部抛异常 → `ErrorEvent`,有 `.message`,照原样报。
+ *   - worker **加载**失败(脚本本身,或它静态 import 的模块图取不到)
+ *     → 规范要求派发的是**普通 `Event`**,没有 `.message`。
+ *
+ * 直接取 `e.message`,后一种就显示成 "vad worker: undefined" —— 一条什么都
+ * 没说的报错。而那恰恰是最常见的一种:`vad-worker.js` 唯一的静态 import 是
+ * `./ort/`,那是构建期抓的资产,没进包就是这个症状(0.3.15 及之前)。
+ */
+export function vadWorkerErrorMessage(e, base = '') {
+  const detail = e && e.message;
+  if (detail) return `vad worker: ${detail}`;
+  return (
+    `vad worker: 加载失败 —— ${base}vad-worker.js 或它 import 的 ` +
+    `ort/ort.wasm.bundle.min.mjs 取不到(浏览器侧语音资产未打进包)`
+  );
+}
+
 export class SpeechClient {
   /**
    * @param {object} opts
@@ -192,7 +214,8 @@ export class SpeechClient {
     this.emit('step', { at: 'worker' });
     this.worker = new Worker(`${this.base}vad-worker.js`, { type: 'module' });
     this.worker.onmessage = (e) => this.onVadMessage(e.data);
-    this.worker.onerror = (e) => this.emit('error', { message: `vad worker: ${e.message}` });
+    this.worker.onerror = (e) =>
+      this.emit('error', { message: vadWorkerErrorMessage(e, this.base) });
 
     this.emit('step', { at: 'playback' });
     await this.setupPlayback();
