@@ -7,7 +7,7 @@
 // 「一个只在别处被读的构造参数」是可以被静态钉住的,不需要浏览器。
 
 import { strict as assert } from 'node:assert';
-import { SpeechClient } from './speech-client.js';
+import { SpeechClient, vadWorkerErrorMessage } from './speech-client.js';
 
 const cases = [];
 const test = async (name, fn) => {
@@ -58,6 +58,21 @@ await test('资源目录默认与本文件同级', () => {
   // worklet 与权重就会 404,而那会表现成「VAD 永远不 ready」。
   const c = new SpeechClient({ sessionId: 's' });
   assert.ok(c.base.endsWith('/lib/speech/'), c.base);
+});
+
+await test('worker 加载失败必须说清楚,不能报 undefined', () => {
+  // Worker 的脚本(或它静态 import 的模块图)取不到时,派发的是**普通 Event**
+  // —— 没有 .message;只有 worker 内部真抛了才是 ErrorEvent。不做这个区分,
+  // 加载失败就显示成 "vad worker: undefined",而那正是「ort/ 没进包」在用户
+  // 那边的样子:一条什么都没说的报错。
+  const msg = vadWorkerErrorMessage({ type: 'error' }, 'moz-extension://x/lib/speech/');
+  assert.ok(!msg.includes('undefined'), msg);
+  assert.ok(msg.includes('ort/'), msg);
+});
+
+await test('worker 内部抛的错要原样保留', () => {
+  const msg = vadWorkerErrorMessage({ type: 'error', message: 'boom' }, '');
+  assert.ok(msg.includes('boom'), msg);
 });
 
 let failed = 0;

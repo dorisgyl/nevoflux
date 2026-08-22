@@ -43,15 +43,25 @@ ORT_FILES=(
   "ort-wasm-simd-threaded.wasm"
 )
 
+# Silero VAD v6.2.1 —— 和 agent 侧 `just fetch-asr-models` 钉的是同一个 URL、
+# 同一个版本。这里必须有一条不依赖 agent 检出的路:CI 上既没有那个仓库,也没有
+# 本地 model cache,而这个权重要跟着扩展进 omni.ja。
+SILERO_URL="${SILERO_URL:-https://raw.githubusercontent.com/snakers4/silero-vad/v6.2.1/src/silero_vad/data/silero_vad.onnx}"
+
 AGENT_REPO="${NEVOFLUX_AGENT_REPO:-$(cd "$PROJECT_ROOT/../nevoflux-agent" 2>/dev/null && pwd || true)}"
 MODEL_CACHE="${NEVOFLUX_MODEL_DIR:-$HOME/.cache/nevoflux/models}"
 
 FORCE=0
 CHECK_ONLY=0
+# --ship:只准备**要进安装包**的那两样(ORT + silero)。fixtures 是给
+# 「用音频文件代替麦克风」的开发模式用的,不打包,所以在构建里不该因为它缺席
+# 而失败 —— apply-patches.sh 走的就是这条路径。
+SHIP_ONLY=0
 for arg in "$@"; do
   case "$arg" in
     --force) FORCE=1 ;;
     --check) CHECK_ONLY=1 ;;
+    --ship) SHIP_ONLY=1 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -95,6 +105,16 @@ if have "$SPEECH_DIR/silero-vad.onnx"; then
 elif [ -s "$MODEL_CACHE/silero-vad.onnx" ] && [ "$CHECK_ONLY" -eq 0 ]; then
   cp "$MODEL_CACHE/silero-vad.onnx" "$SPEECH_DIR/silero-vad.onnx"
   note "silero-vad.onnx" "copied from model cache"
+elif [ "$CHECK_ONLY" -eq 0 ] && command -v curl > /dev/null 2>&1; then
+  echo "  fetching silero-vad.onnx …"
+  if curl -fsSL "$SILERO_URL" -o "$SPEECH_DIR/silero-vad.onnx.part"; then
+    mv "$SPEECH_DIR/silero-vad.onnx.part" "$SPEECH_DIR/silero-vad.onnx"
+    note "silero-vad.onnx" "fetched"
+  else
+    rm -f "$SPEECH_DIR/silero-vad.onnx.part"
+    note "silero-vad.onnx" "MISSING — 下载失败:$SILERO_URL"
+    missing=1
+  fi
 else
   note "silero-vad.onnx" "MISSING — run \`just fetch-asr-models\` in nevoflux-agent"
   missing=1
@@ -107,7 +127,9 @@ fi
 # duplicated into this repo: two copies of a test fixture drift, and then
 # nobody knows which one the assertions were written against.
 
-if [ -n "$AGENT_REPO" ] && [ -d "$AGENT_REPO/crates/asr/tests/fixtures" ]; then
+if [ "$SHIP_ONLY" -eq 1 ]; then
+  note "fixtures/{zh,en}.wav" "skipped (--ship)"
+elif [ -n "$AGENT_REPO" ] && [ -d "$AGENT_REPO/crates/asr/tests/fixtures" ]; then
   mkdir -p "$SPEECH_DIR/fixtures"
   copied=0
   for w in zh en; do
