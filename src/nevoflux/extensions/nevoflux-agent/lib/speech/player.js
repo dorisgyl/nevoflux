@@ -41,7 +41,42 @@ export class VoicePlayer {
     /** 乱序到达的句子先存这里,按 seq 补齐后再排期。 */
     this.pending = new Map();
     this.expectSeq = 0;
+
+    /**
+     * 补齐了、但还没排期的句子。预缓冲就攒在这里。
+     *
+     * 为什么要攒:合成是**逐句**推过来的,一句到了就放会让播放紧贴着合成走 ——
+     * 只要合成比实时慢一点点(RTF > 1),每句之间都会露出一个空档,听起来就是
+     * 断断续续。先攒住一小段再起播,把这些空档合并成开头的一次等待。
+     *
+     * 攒不是万灵药:RTF 持续大于 1 时,攒的那点存货迟早耗尽 —— 那是引擎的问题,
+     * 不是这里的。这里能做的是把「每句都断」变成「偶尔断一次」。
+     */
+    this.queue = [];
+    this.playing = false;
+    /** 攒是从什么时候开始的 —— 超时保护要用。 */
+    this.holdingSince = 0;
   }
+
+  /** 起播前至少攒几句。 */
+  static PREBUFFER_SENTENCES = 3;
+  /**
+   * 或者攒够这么多秒的音频,先到先算。
+   *
+   * 3 秒不是随手定的:这台机器实测合成是 1.17x 实时(CPU 12 线程是量出来的最优,
+   * CUDA 在 T4 上反而是 2.63x —— 自回归解码每步都要付一次 kernel 启动)。合成
+   * 慢 17%,意味着攒下的每一秒存货能多撑约 6 秒播放,3 秒的存货够连续播约 17 秒。
+   * 再长的回答仍然会断,那是产能问题,缓冲买不来。
+   */
+  static PREBUFFER_SECONDS = 3.0;
+  /**
+   * 攒最多等这么久。
+   *
+   * 兜底:一轮只有一句话时,前两个条件永远不成立,没有这个超时就永远不出声 ——
+   * 而「只有一句」正是最常见的短回答。`flush()` 也会解开它,但那要等 daemon 的
+   * turn-done 到达,而那条帧丢了就没有第二次机会。
+   */
+  static PREBUFFER_MAX_WAIT_MS = 2000;
 
   reset() {
     this.stopAll();
@@ -50,6 +85,9 @@ export class VoicePlayer {
     this.nextAt = 0;
     this.pending.clear();
     this.expectSeq = 0;
+    this.queue = [];
+    this.playing = false;
+    this.holdingSince = 0;
     this.gain.gain.cancelScheduledValues(this.ctx.currentTime);
     this.gain.gain.setValueAtTime(1, this.ctx.currentTime);
   }
@@ -70,9 +108,61 @@ export class VoicePlayer {
     while (this.pending.has(this.expectSeq)) {
       const buf = this.pending.get(this.expectSeq);
       this.pending.delete(this.expectSeq);
-      this.schedule(this.expectSeq, buf);
+      this.queue.push({ seq: this.expectSeq, buf });
       this.expectSeq++;
     }
+    this.pump();
+  }
+
+  /** 攒够了就起播;已经在播就直接续上。 */
+  pump() {
+    if (!this.queue.length) return;
+    if (!this.playing) {
+      if (!this.holdingSince) this.holdingSince = Date.now();
+      const seconds = this.queue.reduce((s, q) => s + q.buf.duration, 0);
+      const ready =
+        this.queue.length >= VoicePlayer.PREBUFFER_SENTENCES ||
+        seconds >= VoicePlayer.PREBUFFER_SECONDS ||
+        Date.now() - this.holdingSince >= VoicePlayer.PREBUFFER_MAX_WAIT_MS;
+      if (!ready) {
+        // 还不够。等下一句到达时再问一次;真的只有一句时,超时会把它放出去。
+        clearTimeout(this._holdTimer);
+        this._holdTimer = setTimeout(() => this.pump(), VoicePlayer.PREBUFFER_MAX_WAIT_MS);
+        return;
+      }
+      clearTimeout(this._holdTimer);
+      this.playing = true;
+      this.holdingSince = 0;
+      this.onEvent({ type: 'diag', what: 'prebuffered', sentences: this.queue.length, seconds });
+    }
+    while (this.queue.length) {
+      const { seq, buf } = this.queue.shift();
+      this.schedule(seq, buf);
+    }
+    // 存货放完了。下一句来之前若播放已经追平,就回到攒的状态 —— 与其每句之间
+    // 断一次,不如把空档合并成少数几次。
+    if (this.nextAt <= this.ctx.currentTime) {
+      this.playing = false;
+    }
+  }
+
+  /**
+   * 这一轮说完了,别再等。
+   *
+   * 由 turn-done 触发。没有它,一轮只有一句话时要白等一次超时。
+   */
+  flush() {
+    clearTimeout(this._holdTimer);
+    if (this.queue.length) {
+      this.playing = true;
+      this.holdingSince = 0;
+      while (this.queue.length) {
+        const { seq, buf } = this.queue.shift();
+        this.schedule(seq, buf);
+      }
+    }
+    this.playing = false;
+    this.holdingSince = 0;
   }
 
   schedule(seq, buf) {
@@ -104,6 +194,12 @@ export class VoicePlayer {
     this.gain.gain.setValueAtTime(0, this.ctx.currentTime);
     this.stopAll();
     this.pending.clear();
+    // 攒着还没排期的那几句同样要丢掉。留着的话,打断之后它们会在下一次 pump
+    // 时冒出来 —— 用户喊了停,几秒后又开口,是最败好感的一种。
+    this.queue = [];
+    this.playing = false;
+    this.holdingSince = 0;
+    clearTimeout(this._holdTimer);
     this.onEvent({ type: 'muted', played: this.played });
     return this.played;
   }
