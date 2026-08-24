@@ -544,6 +544,21 @@ export class SpeechClient {
   onVoiceMessage(msg) {
     const p = msg.payload || {};
     if (p.session_id && p.session_id !== this.sessionId) return;
+    // 只听模式下,回合是 daemon 起的,不是我们起的:turn_id 只能**认领**,
+    // 不能拿来过滤。
+    //
+    // 不认领的后果不是丢一句,是从第二个回答起全哑:每一轮的 seq 都从 0 重来,
+    // 而 player 的 expectSeq 停在上一轮的末尾,于是新一轮的音频全部堆在 pending
+    // 里等一个永远不会来的序号 —— 没有报错,没有声音。`say()` 里那句 reset 走的
+    // 是自己发起的那条路,这条路上没人调它。
+    //
+    // 到达顺序就是 daemon 的发送顺序(单条 native messaging 管道,单个发送任务),
+    // 所以「换了 turn_id」就是「换了一轮」,不会把迟到帧误认成新回合。
+    if (this.playbackOnly && p.turn_id && p.turn_id !== this.turnId) {
+      this.turnId = p.turn_id;
+      this.played = 0;
+      this.player?.reset();
+    }
     // 上一轮的迟到音频不该在新一轮里响起来 —— 与上行的 utterance_id 纪律同理。
     if (p.turn_id && this.turnId && p.turn_id !== this.turnId) return;
     switch (msg.type) {
@@ -551,6 +566,9 @@ export class SpeechClient {
         this.playAudio(p);
         break;
       case 'voice_done':
+        // 这一轮没有更多句子了,预缓冲不必再等 —— 一轮只有一句话时,不这么做
+        // 就要白等一次超时。
+        this.player?.flush();
         this.idle?.endBusy();
         // 带上引擎与回落原因:对英文用户回落是换个音色,对中文用户是从有声
         // 变没声,所以这条不能只写进日志。
