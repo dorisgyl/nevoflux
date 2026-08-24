@@ -140,6 +140,8 @@ export class SpeechClient {
     if (this.running) return;
     this.running = true;
     this.fileUrl = opts.fileUrl || null;
+    // 只挂一个听众:不开麦克风、不起 VAD Worker。见下面的提前返回。
+    this.playbackOnly = !!opts.playbackOnly;
     this.sink = opts.sink || 'destination';
     this.idleMs = opts.idleMs;
     this.maxMs = opts.maxMs;
@@ -158,6 +160,25 @@ export class SpeechClient {
       this.emit('warning', {
         message: `AudioContext 给的是 ${this.ctx.sampleRate} Hz,不是 ${SAMPLE_RATE} Hz`,
       });
+    }
+
+    // ---------------------------------------------------------------
+    // 只听不说话的那一半。
+    //
+    // 播放端不需要 worklet 模块(`setupPlayback` 只用 analyser + VoicePlayer,
+    // 都是原生节点),也不需要采集、Worker、静默计时器 —— 后者防的是「忘记关闭
+    // 的常开麦克风」,而这里根本没有麦克风。
+    //
+    // 存在的理由:daemon 决定要不要把流出的回答逐句合成,看的就是 `voice_mode`
+    // (server.rs 的 voice_tap / conversation.rs)。侧栏常驻这个听众,回答才会
+    // 出声;不挂的话,文字照常,只是没有声音,而且不会有任何报错。
+    if (this.playbackOnly) {
+      await this.setupPlayback();
+      this.send('voice_mode', { session_id: this.sessionId, on: true });
+      this._onRuntimeMessage = (msg) => this.onDaemonMessage(msg);
+      browser.runtime.onMessage.addListener(this._onRuntimeMessage);
+      this.emit('starting');
+      return;
     }
 
     this.emit('step', { at: 'capture-module', ctx: this.ctx.state, sr: this.ctx.sampleRate });
@@ -405,6 +426,35 @@ export class SpeechClient {
     this.playbackAnalyser.connect(sink);
 
     this.player = new VoicePlayer(this.ctx, this.playbackAnalyser, (e) => this.onPlayerMessage(e));
+  }
+
+  /**
+   * 改绑会话。
+   *
+   * daemon 的 voice_mode 是按 session_id 记的(conversation.rs 里就是一个
+   * HashSet),而回合开始时用 `chat_message.payload.session_id` 去查
+   * (server.rs handle_chat_message_streaming)。两边必须是同一个 id。
+   *
+   * 旧的关掉、新的打开;同 id 直接返回,可以随便重复调。
+   */
+  setSession(id) {
+    const next = id || '';
+    if (next === this.sessionId) return false;
+    if (this.sessionId) this.send('voice_mode', { session_id: this.sessionId, on: false });
+    this.sessionId = next;
+    if (next) this.send('voice_mode', { session_id: next, on: true });
+    return true;
+  }
+
+  /**
+   * 用一次真实用户手势解开自动播放闸门。
+   *
+   * `say()` 里也有一句 resume,但它的注释写着「采集那条流通常已经解开了它」——
+   * 只听模式下没有采集流,那句就从保险变成了唯一的解法,而它多半不在手势里跑。
+   * 幂等,重复调无害。
+   */
+  resumeAudio() {
+    return this.ctx?.resume().catch(() => {});
   }
 
   /** 播放流的瞬时 RMS。语音视图「在说」那一态的波形驱动源。 */

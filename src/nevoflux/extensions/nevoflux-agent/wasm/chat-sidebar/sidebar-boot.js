@@ -324,6 +324,29 @@
         try { btn.click(); } finally { syncing = false; }
     }
 
+    // 常驻听众 —— 在**第一次用户手势**里挂。
+    //
+    // 时机不是随便选的:AudioContext 建出来是 suspended,currentTime 不走。若在
+    // 解闸前就挂上听众,daemon 送来的句子会被排到同一个时刻上,解闸后挤成一团
+    // 或者干脆丢掉。手势里「创建 + resume」一起做,就没有这个窗口。
+    //
+    // 而用户在侧栏打字发消息本身就是那次手势,所以代价是零 —— 之后整个侧栏
+    // 生命周期内,agent 的回答都会出声,不用再点一下。
+    let listenerAttached = false;
+    function attachListener() {
+        if (listenerAttached) return;
+        listenerAttached = true;
+        import('./nf-voice.mjs')
+            .then((m) => m.startListening().then(() => m.resumeAudio()))
+            .catch((e) => {
+                listenerAttached = false;
+                console.warn('[NevoFlux] 语音听众未挂上:', e && e.message ? e.message : e);
+            });
+    }
+    for (const type of ['pointerdown', 'keydown']) {
+        document.addEventListener(type, attachListener, { once: true, capture: true });
+    }
+
     document.addEventListener('click', function(event) {
         const button = event.target.closest('.voice-send-button.voice-mode');
         if (!button || syncing || busy) return;

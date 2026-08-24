@@ -51,7 +51,7 @@ const view = {
 };
 
 /** 只用于诊断:这条链路的失败大多是静默的,没有计数就只能靠「感觉没反应」。 */
-const stat = { finals: 0, accepted: 0, submitted: 0, spoken: 0, error: '' };
+const stat = { finals: 0, accepted: 0, submitted: 0, spoken: 0, error: '', engine: '', engineReason: '' };
 
 /**
  * 用户有没有开语音视图(§5.2 的 `general.voiceView`)。
@@ -81,9 +81,19 @@ function setVoiceView(on) {
   return !!document.querySelector(MESSAGE_AREA);
 }
 
+/**
+ * 麦克风是不是真的开着。
+ *
+ * `client` 有两种:麦克风模式,和只播不录的常驻听众。按钮问的是前者 ——
+ * 拿 `!!client` 当答案会让侧栏一起来就显示「正在录音」,而麦克风根本没开。
+ */
+function micRunning() {
+  return !!client && !client.playbackOnly;
+}
+
 /** 语音是否正在跑。按钮的视觉状态由 Dioxus 自己翻,这里是**真相**。 */
 export function isActive() {
-  return !!client;
+  return micRunning();
 }
 
 /** 计数快照。无人值守验证读它,人也可以在控制台读它。 */
@@ -91,7 +101,8 @@ export function stats() {
   const bubbles = document.querySelector(BUBBLES);
   return {
     ...stat,
-    active: !!client,
+    active: micRunning(),
+    listening: !!client?.playbackOnly,
     state: view.state,
     played: client?.played ?? 0,
     voiceView: document.documentElement.dataset.nfVoiceView === 'on',
@@ -103,6 +114,93 @@ export function stats() {
         ? 'hidden'
         : 'visible',
   };
+}
+
+/**
+ * 挂一个只播不录的听众,并让它一直待着。
+ *
+ * daemon 决定要不要把流出的回答逐句合成,看的是 `voice_mode`(server.rs 的
+ * voice_tap)。侧栏常驻这个听众,回答才会出声;不挂的话文字照常,只是没有
+ * 声音 —— 而且那条路径「发失败也只是没有声音」,不会有任何报错。
+ *
+ * 幂等:麦克风模式本身就带播放端,已经在跑就不用再挂。
+ */
+export async function startListening(opts = {}) {
+  if (client) return client;
+  const { SpeechClient } = await import(`${SPEECH_BASE}speech-client.js`);
+  client = new SpeechClient({
+    sessionId: opts.sessionId || window[SESSION_KEY] || '',
+    // 听众是后台角色:不碰语音面板(那是麦克风模式的 UI),只把出了岔子的事
+    // 说出来。
+    onEvent: (e) => {
+      if (e.type === 'error') {
+        console.warn('[NevoFlux] 语音听众:', e.message);
+        return;
+      }
+      // 引擎回落必须说出来。对英文用户这只是换了个音色,对中文用户是**从会说
+      // 中文变成只会英文** —— 而这条帧以前只有麦克风模式那条路会读,听众这条
+      // 路把它丢掉了,于是用户看到的只是「怎么突然全是英文」,没有任何线索。
+      if (e.type === 'turn-done' && e.engineReason) {
+        stat.engine = e.engine || '';
+        stat.engineReason = e.engineReason;
+        console.warn(
+          `[NevoFlux] 语音已改用 ${e.engine === 'kokoro' ? 'Kokoro(仅英文)' : e.engine}:${e.engineReason}`,
+        );
+      }
+    },
+  });
+  await client.start({ playbackOnly: true });
+  bindSession();
+  console.log(`[NevoFlux] 语音听众已挂上,会话 ${client.sessionId || '(等它出现)'}`);
+  return client;
+}
+
+/**
+ * 让听众绑在**当前**会话上,并在它变的那一刻跟过去。
+ *
+ * WASM 侧用 `Reflect::set` 把 session id 写进 window(context.rs),而
+ * `Reflect.set` 会走访问器的 setter —— 换成带 setter 的属性,就能在 id 落地
+ * 的那一刻改绑。
+ *
+ * 为什么不能轮询:发消息和写 window 读的是同一个 `ctx.session.read().id`
+ * (text_input.rs:781 / context.rs:412),值本来就一样,差的只是时机。轮询慢
+ * 一拍,那一回合查 voice_mode 就是 false,回答不出声且无任何报错 —— 实测就是
+ * 这么失败的。
+ */
+const SESSION_KEY = '__nevoflux_session_id';
+let sessionHooked = false;
+function bindSession() {
+  client?.setSession(window[SESSION_KEY] || '');
+  if (sessionHooked) return;
+  let current = window[SESSION_KEY];
+  try {
+    Object.defineProperty(window, SESSION_KEY, {
+      configurable: true,
+      get: () => current,
+      set: (v) => {
+        current = v;
+        if (client?.playbackOnly && client.setSession(v || '')) {
+          console.log(`[NevoFlux] 语音听众改绑到会话 ${client.sessionId}`);
+        }
+      },
+    });
+    sessionHooked = true;
+  } catch (e) {
+    console.warn('[NevoFlux] 会话钩子没装上,回答可能不会出声:', e.message);
+  }
+}
+
+/** 把听众换下来。只动听众,麦克风模式请走 stopVoice。 */
+async function stopListening() {
+  if (!client?.playbackOnly) return;
+  const l = client;
+  client = null;
+  await l.stop().catch(() => {});
+}
+
+/** 用一次真实用户手势解开自动播放闸门。幂等。 */
+export function resumeAudio() {
+  return client?.resumeAudio();
 }
 
 /** 让 agent 念一段话。`<speak>` 拆流在 daemon 侧。 */
@@ -289,6 +387,9 @@ function onEvent(e, onStopped) {
  *   用来把按钮的视觉状态掰回来。
  */
 export async function startVoice(opts = {}) {
+  // 听众占着 client,但它没有麦克风。不先换下来的话,这里会把一个只会播放的
+  // 实例返回给「开始说话」,表现是点了麦克风却永远收不到音。
+  await stopListening();
   if (client) return client;
   buildUi();
   ui.root.hidden = false;
@@ -349,7 +450,7 @@ export async function stopVoice() {
   if (ui) {
     clearTimeout(statusTimer);
     statusTimer = setTimeout(() => {
-      if (!client && ui) {
+      if (!micRunning() && ui) {
         ui.root.hidden = true;
         say('');
       }
@@ -359,4 +460,7 @@ export async function stopVoice() {
     cancelAnimationFrame(rafId);
     rafId = 0;
   }
+  // 麦克风关了,听众要留着 —— 否则用过一次语音之后回答就再也不出声,
+  // 而这不会有任何报错。
+  startListening().catch(() => {});
 }

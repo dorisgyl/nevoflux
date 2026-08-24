@@ -75,6 +75,47 @@ await test('worker 内部抛的错要原样保留', () => {
   assert.ok(msg.includes('boom'), msg);
 });
 
+await test('playbackOnly 默认关 —— 不传就是完整的采集+播放', async () => {
+  const c = new SpeechClient({ sessionId: 's' });
+  await startUntilAudio(c, {});
+  assert.equal(c.playbackOnly, false);
+});
+
+await test('start({playbackOnly:true}) 必须被记住', async () => {
+  // 这个标志决定 start() 跳不跳过 getUserMedia / VAD Worker。被静默重置的话,
+  // 症状是「只想听,却弹了麦克风授权」—— 和 autoSubmit 当年一样,是个只在
+  // 别处被读的选项,所以在这里钉住。
+  const c = new SpeechClient({ sessionId: 's' });
+  await startUntilAudio(c, { playbackOnly: true });
+  assert.equal(c.playbackOnly, true);
+});
+
+await test('setSession:同 id 不重发,换 id 要改绑', () => {
+  // daemon 按 session_id 记 voice_mode。绑错或绑在空串上,回答就不会出声,
+  // 而且不会有任何报错 —— 这是这条链路最容易静默失败的一环。
+  const sent = [];
+  const c = new SpeechClient({ sessionId: 'old' });
+  c.send = (type, payload) => sent.push([type, payload.session_id, payload.on]);
+
+  assert.equal(c.setSession('old'), false, '同 id 应当什么都不做');
+  assert.equal(sent.length, 0);
+
+  assert.equal(c.setSession('new'), true);
+  assert.deepEqual(sent, [
+    ['voice_mode', 'old', false],
+    ['voice_mode', 'new', true],
+  ]);
+  assert.equal(c.sessionId, 'new');
+});
+
+await test('setSession:从空串起步只开新的,不关一个不存在的', () => {
+  const sent = [];
+  const c = new SpeechClient({ sessionId: '' });
+  c.send = (type, payload) => sent.push([type, payload.session_id, payload.on]);
+  assert.equal(c.setSession('first'), true);
+  assert.deepEqual(sent, [['voice_mode', 'first', true]]);
+});
+
 await test('只听模式:daemon 起的回合要认领,不能拿 turn_id 当过滤器', () => {
   // 不认领的后果不是丢一句,是从第二个回答起全哑:每一轮的 seq 都从 0 重来,
   // 而 player 的 expectSeq 停在上一轮末尾,新一轮的音频全堆在 pending 里等一个
