@@ -3421,7 +3421,17 @@ const Settings = {
     if (data.engine === 'moss') {
       line.textContent = `Speaking with MOSS — multilingual${rtf}.`;
     } else if (data.engine === 'kokoro') {
-      line.textContent = `Speaking with Kokoro, English only. ${data.reason || ''}`.trim();
+      // Which languages Kokoro speaks depends on which release is loaded, so
+      // read it off the voices that are actually there rather than asserting
+      // it here. v1.1-zh ships zf_/zm_ speakers and handles Chinese; v1.0 is
+      // English only. Hardcoding "English only" was true until it wasn't, and
+      // this line is exactly what someone reads to work out why they are
+      // hearing English.
+      const speaksChinese = (data.voices || []).some((v) =>
+        /^z[fm]_/.test(String(v.id || v))
+      );
+      const langs = speaksChinese ? 'Chinese and English' : 'English only';
+      line.textContent = `Speaking with Kokoro, ${langs}. ${data.reason || ''}`.trim();
     } else {
       line.textContent = data.reason || 'No speech engine is available.';
     }
