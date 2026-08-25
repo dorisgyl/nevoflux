@@ -3390,6 +3390,30 @@ const Settings = {
     // —— 所以它是偏好,不是模式,与 hands-free / tap-to-talk 正交。
     // `_createToggleRow` takes no hint argument; passing one would have been
     // silently dropped, so the explanation is its own line.
+    // Speaking is a separate decision from listening. It used to ride on the
+    // microphone: turn voice input on and every reply was read out, with no
+    // middle setting — and wanting to talk to it is not the same as wanting
+    // it to talk back. Off by default, because sound is an interruption.
+    group.appendChild(this._createToggleRow('Speak replies', 'general.speakReplies', false));
+    const speakHint = document.createElement('p');
+    speakHint.className = 'section-desc';
+    speakHint.textContent =
+      'Reads answers out loud while voice input is on. Off, they only appear ' +
+      'as text — dictation still works.';
+    group.appendChild(speakHint);
+
+    // On by default: the useful direction of this switch is off. Leaving it on
+    // does not force the GPU — the engine still measures both and takes the
+    // faster one, and a GPU is not always faster for these models. Turning it
+    // off pins the CPU, which is the way back when a driver misbehaves.
+    group.appendChild(this._createToggleRow('Use GPU when it helps', 'general.speechUseGpu', true));
+    const gpuHint = document.createElement('p');
+    gpuHint.className = 'section-desc';
+    gpuHint.textContent =
+      'Lets speech try DirectML or CUDA and keep whichever is faster than the ' +
+      'CPU here. Turn off to stay on the CPU. Takes effect next time speech starts.';
+    group.appendChild(gpuHint);
+
     group.appendChild(this._createToggleRow('Voice view', 'general.voiceView', false));
     const viewHint = document.createElement('p');
     viewHint.className = 'section-desc';
