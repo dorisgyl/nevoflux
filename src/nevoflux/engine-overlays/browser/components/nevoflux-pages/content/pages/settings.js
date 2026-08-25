@@ -3076,6 +3076,14 @@ const Settings = {
       desc: 'Reads answers aloud. English only — a small fallback voice.',
     },
     {
+      id: 'speak-chinese',
+      title: 'Chinese replies',
+      desc:
+        'Reads answers aloud in Chinese as well as English. Supersedes the ' +
+        'tier above — it carries English voices too, so there is no reason ' +
+        'to keep both.',
+    },
+    {
       id: 'speak-multilingual',
       title: 'Natural voice',
       desc:
