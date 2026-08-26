@@ -37,6 +37,12 @@ export class VoicePlayer {
     this.nextAt = 0;
     /** **完整播完**的句数 —— 投递注记要的就是这个(ADR-0004)。 */
     this.played = 0;
+    /**
+     * 空档次数:这一轮里播放追上了合成、不得不静音等待的次数。
+     *
+     * 「不流畅」是一句感受,传不到日志里也没法比较。这个数字能。
+     */
+    this.underruns = 0;
     this.muted = false;
     /** 乱序到达的句子先存这里,按 seq 补齐后再排期。 */
     this.pending = new Map();
@@ -78,10 +84,19 @@ export class VoicePlayer {
    */
   static PREBUFFER_MAX_WAIT_MS = 2000;
 
+  /**
+   * 多大的空档才算断。
+   *
+   * 调度是采样级的,但 `currentTime` 的读数和 `start()` 的实际生效之间总有几
+   * 毫秒的抖动。20 毫秒以下听不出来,报出来只会淹掉真正的断点。
+   */
+  static GAP_TOLERANCE = 0.02;
+
   reset() {
     this.stopAll();
     this.muted = false;
     this.played = 0;
+    this.underruns = 0;
     this.nextAt = 0;
     this.pending.clear();
     this.expectSeq = 0;
@@ -170,6 +185,30 @@ export class VoicePlayer {
     src.buffer = buf;
     src.connect(this.gain);
     const startAt = Math.max(this.ctx.currentTime, this.nextAt);
+
+    // 空档:上一句放完到这一句起播之间的静音。
+    //
+    // 调度本身是采样级无缝的 —— `nextAt` 累加,句与句之间不留缝。所以听到断续
+    // 只有一个来源:这一句**来晚了**,`nextAt` 已经过去,`startAt` 落回了
+    // `currentTime`,那个差就是空档。
+    //
+    // 量它,因为「不流畅」这个说法本身传不到任何地方去。合成在这台机器上是
+    // 0.51x(比实时快一倍),所以如果还是断,断的原因不在合成 —— 而是在这里
+    // 能看见的:等文本、等网络、还是起播太早。
+    if (this.nextAt > 0) {
+      const gap = startAt - this.nextAt;
+      if (gap > VoicePlayer.GAP_TOLERANCE) {
+        this.underruns++;
+        this.onEvent({
+          type: 'diag',
+          what: 'underrun',
+          seq,
+          gap: Number(gap.toFixed(2)),
+          total: this.underruns,
+        });
+      }
+    }
+
     src.start(startAt);
     this.nextAt = startAt + buf.duration;
     src.onended = () => {

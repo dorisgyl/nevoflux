@@ -341,6 +341,13 @@ function onEvent(e, onStopped) {
       break;
     case 'diag':
       if (e.what === 'scheduled') setState('speaking');
+      // 空档要说出来。这是「不流畅」唯一可比较的形式:第几句、断了多久、
+      // 这一轮断了几次。没有它,合成端的 rtf 和用户听到的断续之间没有桥。
+      if (e.what === 'underrun') {
+        stat.underruns = e.total;
+        stat.lastGap = e.gap;
+        console.warn(`[NevoFlux] 语音空档 ${e.gap}s(第 ${e.seq} 句,本轮第 ${e.total} 次)`);
+      }
       break;
     case 'turn-done':
       // 只有回落时才有原因。有的话就说出来 —— 否则用户听到的是英文腔的中文,
