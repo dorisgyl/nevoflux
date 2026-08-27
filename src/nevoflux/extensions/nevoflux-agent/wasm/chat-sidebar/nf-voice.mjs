@@ -229,6 +229,28 @@ function buildUi() {
   const partial = document.createElement('div');
   partial.className = 'nf-voice-partial';
 
+  // 关掉的入口。
+  //
+  // 在此之前这个面板只能开不能关:开麦克风把它显示出来,而面板上没有任何地方
+  // 能停下来。用户的原话是「没有关闭或者停止的地方」。`stopVoice()` 一直都在,
+  // 缺的只是一个够得着的按钮。
+  //
+  // 放在语音条自己身上,而不是设置页里:要停的是**现在正在发生的事**,而为此
+  // 去翻设置是把一个动作变成一次寻找。
+  const close = document.createElement('button');
+  close.className = 'nf-voice-close';
+  close.type = 'button';
+  close.title = '停止语音';
+  close.setAttribute('aria-label', '停止语音');
+  close.textContent = '✕';
+  close.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // 不等它:停止要立刻看起来发生了,而释放麦克风和听众要走几个 await。
+    stopVoice();
+  });
+
+  line.append(close);
   root.append(canvas, line, partial);
   // 挂在 body 上,不进 #main:Dioxus 只管 #main,插进去的节点会在下一次 diff
   // 时被移走 —— 症状是「有时候能看见,有时候看不见」。
