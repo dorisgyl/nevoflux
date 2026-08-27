@@ -43,6 +43,42 @@
   min-height: 1.4em;
 }
 
+/* 停止按钮。
+ *
+ * `margin-left: auto` 把它推到状态行最右边 —— 那一行左边是状态点和文字,右边
+ * 空着,而「停下来」属于最容易够到的角落。
+ *
+ * 触摸目标 24px,比图标本身大:一个只有 11px 的叉在侧栏里点不中。 */
+.nf-voice-close {
+  margin-left: auto;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--zen-border-radius, 6px);
+  background: transparent;
+  color: var(--nevo-text-secondary, #666);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.1s ease, color 0.1s ease;
+}
+
+.nf-voice-close:hover {
+  background: var(--zen-colors-tertiary, rgba(128, 128, 128, 0.16));
+  color: var(--nevo-text, #111);
+}
+
+/* 焦点圈不能去掉:这是键盘用户停止语音的唯一入口。 */
+.nf-voice-close:focus-visible {
+  outline: 2px solid var(--zen-primary-color, AccentColor);
+  outline-offset: 1px;
+}
+
 .nf-voice-dot {
   width: 7px;
   height: 7px;
