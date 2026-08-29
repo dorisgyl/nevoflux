@@ -12,6 +12,7 @@ import { makeHeader } from '../content/recorder-logic.mjs';
 import { createAgentStatusMachine } from './agent-status-machine.mjs';
 import { promptFor } from './avatar-prompt-policy.mjs';
 import { checkWebSession } from './web-session.mjs';
+import { NetworkCapture, redactUrl, redactHeaders } from './network-capture.mjs';
 
 // Immediate debug log to verify script is loading
 console.log('[NevoFlux] Background script starting...');
@@ -33,6 +34,68 @@ console.log('[NevoFlux] Background script starting...');
 // =============================================================================
 // Channel Names (Native Messaging Application IDs)
 // =============================================================================
+
+/**
+ * 网络捕获。默认全空 —— 只有被点名的回合才会有标签页进来。
+ *
+ * 监听器始终注册,但 `networkCapture.record` 对没有 start 过的标签页什么都不做:
+ * 「默认不抓」由缓冲那一层保证,而不是靠这里装卸监听器。装卸会引入一个更难的
+ * 问题 —— 回合切换的瞬间正在飞的请求算谁的。
+ */
+const networkCapture = new NetworkCapture();
+
+/** requestId -> 起始信息。onCompleted / onErrorOccurred 时补齐成一条记录。 */
+const networkPending = new Map();
+
+function finishNetworkRecord(d, extra) {
+  if (d.tabId < 0) return;
+  const p = networkPending.get(d.requestId);
+  networkPending.delete(d.requestId);
+  networkCapture.record(d.tabId, {
+    url: redactUrl(p?.url ?? d.url),
+    method: p?.method ?? d.method,
+    type: p?.type ?? d.type,
+    duration_ms: p ? Math.round(d.timeStamp - p.started) : undefined,
+    headers: redactHeaders(d.responseHeaders),
+    ...extra,
+  });
+}
+
+// 权限没生效时 `browser.webRequest` 是 undefined,而注册发生在模块顶层 —— 抛出去
+// 会把整个 background 脚本弄死,而不只是丢掉这一个功能。陈旧 profile 加载新代码
+// 配旧权限,在这个项目里是反复出现过的情形。
+if (typeof browser.webRequest === 'undefined') {
+  console.warn('[NevoFlux] webRequest permission unavailable; network capture disabled');
+} else {
+  browser.webRequest.onBeforeRequest.addListener(
+    (d) => {
+      if (d.tabId < 0 || !networkCapture.isActive(d.tabId)) return;
+      networkPending.set(d.requestId, {
+        started: d.timeStamp,
+        url: d.url,
+        method: d.method,
+        type: d.type,
+      });
+    },
+    { urls: ['<all_urls>'] }
+  );
+
+  browser.webRequest.onCompleted.addListener(
+    // 大小拿得到就带上,拿不到就省略 —— 部分缓存命中的请求上 Firefox 不给这两个值。
+    (d) =>
+      finishNetworkRecord(d, {
+        status: d.statusCode,
+        request_size: d.requestSize,
+        response_size: d.responseSize,
+      }),
+    { urls: ['<all_urls>'] },
+    ['responseHeaders']
+  );
+
+  browser.webRequest.onErrorOccurred.addListener((d) => finishNetworkRecord(d, { error: d.error }), {
+    urls: ['<all_urls>'],
+  });
+}
 
 const CHANNEL_NAMES = {
   CHAT: 'com.nevoflux.agent', // Chat channel (bidirectional)
@@ -4054,6 +4117,32 @@ async function executeBrowserTool(request, caller = 'unknown') {
       // Content extraction
       case 'get_markdown':
         return await executeGetMarkdownViaApi(targetTabId, params);
+
+      // 网络捕获。开关由回合驱动(见 run_loop),这里只执行。
+      case 'network_capture_start':
+        networkCapture.start(targetTabId);
+        return { success: true, result: { active: true } };
+
+      case 'network_capture_stop':
+        networkCapture.stop(targetTabId);
+        return { success: true, result: { active: false } };
+
+      case 'network_requests': {
+        // 「标签页已关」和「本回合没开」在缓冲里长得一模一样(都是没有槽位),
+        // 但对使用者是两件事。先问标签页还在不在。
+        try {
+          await browser.tabs.get(targetTabId);
+        } catch {
+          return {
+            success: false,
+            error: { code: -1, message: `tab ${targetTabId} is gone`, recoverable: false },
+          };
+        }
+        return {
+          success: true,
+          result: networkCapture.read(targetTabId, { onlyFailed: !!params?.only_failed }),
+        };
+      }
 
       // Web fetch (URL to markdown, saved to cache)
       case 'web_fetch':
