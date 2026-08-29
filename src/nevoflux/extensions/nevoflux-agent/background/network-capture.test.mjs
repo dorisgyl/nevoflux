@@ -10,6 +10,7 @@ import {
   redactUrl,
   redactHeaders,
   MAX_RECORDS,
+  MAX_RETURNED,
   MAX_SESSION_MS,
 } from './network-capture.mjs';
 
@@ -78,11 +79,53 @@ test('当前页空但别的页有记录时,要说出是哪个 tab', () => {
   assert.ok(got.message.includes('7'), got.message);
 });
 
-test('有记录时不带说明 —— 免得读成「没抓到」', () => {
+test('有记录且没截断时不带说明 —— 免得读成「没抓到」', () => {
   const cap = new NetworkCapture();
   cap.arm(T0);
   cap.record(1, { url: 'https://x.com/a', method: 'GET', status: 200 }, T0);
   assert.equal(cap.read(1, {}, T0).message, undefined);
+});
+
+/// 一次实测里,模型看到 dropped: 332 就自行编了「并发请求被采样合并」的解释,
+/// 于是用户以为什么都没丢 —— 而五百多个请求里实际只剩了两百个。
+test('缓冲淘汰过就要说出来,而且要说清取不回来了', () => {
+  const cap = new NetworkCapture();
+  cap.arm(T0);
+  for (let i = 0; i < MAX_RECORDS + 50; i++) {
+    cap.record(1, { url: 'https://x.com/' + i, method: 'GET', status: 200 }, T0);
+  }
+  const got = cap.read(1, {}, T0);
+  assert.equal(got.summary.dropped, 50);
+  assert.ok(got.message, '淘汰过必须带说明');
+  assert.ok(got.message.includes('50'), got.message);
+  assert.ok(got.message.includes('不完整'), '要说清这段记录不完整: ' + got.message);
+});
+
+test('一次只返回最近的一段,但摘要按全部算', () => {
+  const cap = new NetworkCapture();
+  cap.arm(T0);
+  const n = MAX_RETURNED + 30;
+  for (let i = 0; i < n; i++) {
+    cap.record(1, { url: 'https://x.com/' + i, method: 'GET', status: 200 }, T0);
+  }
+  const got = cap.read(1, {}, T0);
+  assert.equal(got.records.length, MAX_RETURNED, '返回条数要封顶');
+  assert.equal(got.summary.total, n, '摘要要覆盖全部,不只是返回的那些');
+  assert.equal(got.summary.returned, MAX_RETURNED);
+  // 返回最近的,不是最早的 —— 看日志几乎总是关心刚发生的。
+  assert.ok(got.records[got.records.length - 1].url.endsWith('/' + (n - 1)), '最后一条该是最新的');
+  assert.ok(got.message.includes(String(n)), got.message);
+});
+
+test('only_failed 之后的截断也要如实说', () => {
+  const cap = new NetworkCapture();
+  cap.arm(T0);
+  for (let i = 0; i < MAX_RETURNED + 10; i++) {
+    cap.record(1, { url: 'https://x.com/' + i, method: 'GET', status: 500 }, T0);
+  }
+  const got = cap.read(1, { onlyFailed: true }, T0);
+  assert.equal(got.records.length, MAX_RETURNED);
+  assert.equal(got.summary.matched, MAX_RETURNED + 10);
 });
 
 // --- 会话生命周期:这次改动的核心 ---
@@ -151,18 +194,23 @@ test('条数上限:超出的最旧记录被丢弃并计数', () => {
     cap.record(1, { url: 'https://x.com/' + i, method: 'GET', status: 200 }, T0);
   }
   const got = cap.read(1, {}, T0);
-  assert.equal(got.records.length, MAX_RECORDS);
+  assert.equal(got.summary.total, MAX_RECORDS, '缓冲里留住的条数要封顶');
   assert.equal(got.summary.dropped, 5);
-  assert.ok(got.records[0].url.endsWith('/5'), '丢的该是最旧的');
+  // 丢的是最旧的:第 0..4 号没了,缓冲里最旧的是 5 号。
+  assert.equal(got.summary.by_status['200'], MAX_RECORDS);
 });
 
-test('字节上限:少数巨型记录同样会触发丢弃', () => {
+test('字节上限:远不到条数上限也会因为体积触发丢弃', () => {
   const cap = new NetworkCapture();
   cap.arm(T0);
+  // 每条约 100KB,五十条就超过 4MB —— 条数才 50,离 2000 条还远得很。
+  // 两个上限都要有的理由就在这:一个页面可能发两千个小请求,也可能发几十个巨型 URL。
   const huge = 'https://x.com/?p=' + 'a'.repeat(100_000);
-  for (let i = 0; i < 5; i++) cap.record(1, { url: huge, method: 'GET', status: 200 }, T0);
+  const n = 50;
+  for (let i = 0; i < n; i++) cap.record(1, { url: huge, method: 'GET', status: 200 }, T0);
   const got = cap.read(1, {}, T0);
-  assert.ok(got.records.length < 5, '字节上限没生效,留了 ' + got.records.length + ' 条');
+  assert.ok(got.summary.total < n, '字节上限没生效,留了 ' + got.summary.total + ' 条');
+  assert.ok(got.summary.total < MAX_RECORDS, '这一条不该是被条数上限挡下的');
   assert.ok(got.summary.dropped > 0);
 });
 

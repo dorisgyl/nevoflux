@@ -29,8 +29,26 @@ const HEADER_WHITELIST = ['content-type', 'content-length', 'cache-control', 'lo
 /** 保留键名、替换值的头部 ——「这个请求带了 Authorization」本身是有用的信息。 */
 const HEADER_REDACT = ['authorization', 'cookie', 'set-cookie', 'x-api-key', 'proxy-authorization'];
 
-export const MAX_RECORDS = 200;
-export const MAX_BYTES = 262144;
+/**
+ * 缓冲能留多少条。
+ *
+ * 原来是 200 —— 那是按「一个 agent 回合」定的。改成会话制之后一次实测:GitHub
+ * 几分钟就发了 532 个请求,于是 332 条被悄悄丢掉,而留下的 200 条看起来完全正常。
+ * 对一段真实的调试会话来说,截断成了常态而不是边缘情况。
+ */
+export const MAX_RECORDS = 2000;
+
+/** 缓冲能占多少字节。条数放大了十倍,这个也要跟上,否则先撞的是它。 */
+export const MAX_BYTES = 4 * 1024 * 1024;
+
+/**
+ * 一次最多返回多少条。
+ *
+ * 缓冲留得多是为了不丢,返回得少是为了不烧 token —— 这两件事要分开。两千条
+ * 记录进模型上下文是几十万 token,而看请求日志几乎总是只关心最近这些,或者
+ * 用 only_failed 挑出坏的那几条。
+ */
+export const MAX_RETURNED = 100;
 
 /**
  * 一次开启最多录多久。
@@ -181,7 +199,9 @@ export class NetworkCapture {
       };
     }
 
-    const records = onlyFailed ? slot.records.filter(isFailure) : slot.records.slice();
+    const matched = onlyFailed ? slot.records.filter(isFailure) : slot.records.slice();
+    // 只返回最近的一段。旧的还在缓冲里,但一次性全给出去就是几十万 token。
+    const records = matched.slice(-MAX_RETURNED);
     const by_status = {};
     let failed = 0;
     for (const r of slot.records) {
@@ -189,11 +209,36 @@ export class NetworkCapture {
       by_status[k] = (by_status[k] || 0) + 1;
       if (isFailure(r)) failed++;
     }
-    return {
+    // 数字自己不会说话。上一次实测里,模型看到 dropped: 332 就自行编了一个
+    // 「并发请求被采样合并」的解释,于是用户以为什么都没丢 —— 而实际上五百多个
+    // 请求里只剩了两百个。给了数据就要给读法。
+    const notes = [];
+    if (records.length < matched.length) {
+      notes.push(
+        `符合条件的有 ${matched.length} 条,这里只返回最近的 ${records.length} 条。` +
+          '更早的仍在缓冲里,用 only_failed 缩小范围可以看到别的。'
+      );
+    }
+    if (slot.dropped > 0) {
+      notes.push(
+        `另有 ${slot.dropped} 条更早的记录已被缓冲淘汰(每个标签页最多留 ` +
+          `${MAX_RECORDS} 条),它们无法再取回 —— 这段记录不完整。`
+      );
+    }
+    const out = {
       active: true,
       records,
-      summary: { total: slot.records.length, failed, dropped: slot.dropped, by_status },
+      summary: {
+        total: slot.records.length,
+        matched: matched.length,
+        returned: records.length,
+        failed,
+        dropped: slot.dropped,
+        by_status,
+      },
       remaining_s,
     };
+    if (notes.length) out.message = notes.join('');
+    return out;
   }
 }
