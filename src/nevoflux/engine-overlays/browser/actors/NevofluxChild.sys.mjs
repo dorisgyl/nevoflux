@@ -5449,8 +5449,9 @@ export class NevofluxChild extends JSWindowActorChild {
    * 只能抓到注入之后的消息、会被 CSP 挡掉一部分、对特权页面无效。这条路三条都
    * 不占:存储里本来就有历史缓冲,不涉及脚本注入,nevoflux:// 页面一样能读。
    *
-   * 只覆盖本进程内的文档。跨源 iframe 在 Fission 下属于别的进程,由父进程分别
-   * 向各自的 actor 取,再合并。
+   * 只覆盖**这一个**文档。整棵子树由父进程枚举 browsing context 后逐个向对应的
+   * actor 取,同进程和跨进程的 iframe 都在其中 —— 所以这里绝不能再自己走一遍
+   * `win.frames`,否则同进程的 iframe 会被数两次。
    */
   getConsoleMessages(params = {}) {
     const win = this.contentWindow;
@@ -5461,22 +5462,16 @@ export class NevofluxChild extends JSWindowActorChild {
     const wanted = Array.isArray(params.levels) && params.levels.length ? params.levels : null;
     const perMessageCap = 2000;
 
-    // 本文档 + 同进程的子框架。
+    // 只读这一个文档。子框架由父进程遍历 browsing context 子树逐个取 ——
+    // 这里再走一遍 `win.frames`,同进程的 iframe 就会被数两次。
     const ids = [];
-    const collect = (w, depth) => {
-      try {
-        const id = w.windowGlobalChild?.innerWindowId;
-        if (id) ids.push(String(id));
-        if (depth > 4) return;
-        for (let i = 0; i < w.frames.length; i++) {
-          // 跨源的会抛,那种归父进程去别的 actor 取。
-          try {
-            collect(w.frames[i], depth + 1);
-          } catch {}
-        }
-      } catch {}
-    };
-    collect(win, 0);
+    try {
+      const id = win.windowGlobalChild?.innerWindowId;
+      if (id) ids.push(String(id));
+    } catch {}
+    if (!ids.length) {
+      return { success: true, messages: [], url: win.location?.href };
+    }
 
     const describe = (v) => {
       try {
@@ -5549,7 +5544,16 @@ export class NevofluxChild extends JSWindowActorChild {
           continue;
         }
         if (!idSet.has(String(err.innerWindowID))) continue;
-        const level = err.isWarning ? 'warn' : 'error';
+        // 级别在 flags 里。`nsIScriptError` 没有 isWarning 属性 —— 读它得到
+        // undefined,于是平台发的每一条都成了 error。实测中一个健康的 GitHub
+        // 页面因此报出 248 条「错误」,全是 Referrer Policy 警告。
+        const flags = err.flags || 0;
+        let level = 'error';
+        if (flags & Ci.nsIScriptError.warningFlag) {
+          level = 'warn';
+        } else if (flags & Ci.nsIScriptError.infoFlag) {
+          level = 'info';
+        }
         if (wanted && !wanted.includes(level)) continue;
         const text = String(err.errorMessage || '');
         out.push({
