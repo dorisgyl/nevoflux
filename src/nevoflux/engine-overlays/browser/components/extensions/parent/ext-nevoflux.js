@@ -298,6 +298,86 @@ this.nevoflux = class extends ExtensionAPI {
           return self.executeInTabWithRestore(resolvedTabId, extension, 'screenshot', options);
         },
 
+        /**
+         * 读一个标签页的控制台消息。
+         *
+         * 走 DevTools 那套 `nsIConsoleAPIStorage`(在 NevofluxChild 里),不注入
+         * 脚本。所以能拿到附加之前的历史、不受 CSP 影响、对 nevoflux:// 页面也
+         * 有效 —— 这三条正是当初把控制台这一半搁置的理由。
+         *
+         * 跨源 iframe 在 Fission 下住在别的进程里,各有各的 actor 和各自的存储,
+         * 所以要遍历整棵 browsing context 子树分别取,再按时间合并。只查主框架
+         * 的话,一个把错误报在嵌入式 iframe 里的页面会看起来毫无问题。
+         */
+        async getConsoleMessages(tabId, options = {}) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          const tab = extension.tabManager.get(resolvedTabId);
+          if (!tab?.browser) {
+            return {
+              success: false,
+              error: { code: 3001, message: 'Tab not found', recoverable: false },
+            };
+          }
+
+          const levels = Array.isArray(options.levels) ? options.levels : undefined;
+          const limit = Number.isInteger(options.limit) && options.limit > 0 ? options.limit : 100;
+
+          let contexts;
+          try {
+            contexts = tab.browser.browsingContext.getAllBrowsingContextsInSubtree();
+          } catch {
+            contexts = [tab.browser.browsingContext];
+          }
+
+          const collected = [];
+          let frames = 0;
+          for (const bc of contexts) {
+            const wgp = bc?.currentWindowGlobal;
+            if (!wgp) continue;
+            try {
+              const actor = wgp.getActor('Nevoflux');
+              const res = await actor.sendQuery('execute', {
+                action: 'getConsoleMessages',
+                params: { levels },
+              });
+              if (res?.success && Array.isArray(res.messages)) {
+                frames++;
+                for (const m of res.messages) collected.push(m);
+              }
+            } catch {
+              // 一个 frame 取不到不该让整次读取失败 —— 进程可能刚没了,
+              // 或者那个文档还没装上 actor。
+            }
+          }
+
+          collected.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
+          const by_level = {};
+          for (const m of collected) {
+            by_level[m.level] = (by_level[m.level] || 0) + 1;
+          }
+          // 返回最近的一段:控制台在长会话里能堆到几千条,整批塞进模型上下文
+          // 是几十万 token,而看日志几乎总是只关心最近的那些。
+          const messages = collected.slice(-limit);
+
+          const result = {
+            success: true,
+            messages,
+            summary: {
+              total: collected.length,
+              returned: messages.length,
+              frames,
+              by_level,
+            },
+          };
+          if (messages.length < collected.length) {
+            result.message =
+              '共 ' + collected.length + ' 条,这里只返回最近的 ' + messages.length +
+              ' 条。用 levels 过滤(如 ["error","warn"])可以看到别的。';
+          }
+          return result;
+        },
+
         async getMarkdown(tabId, options = {}) {
           // Delegate to getTabContent for unified logic (auto-restore, etc.)
           const result = await this.getTabContent(tabId, {
