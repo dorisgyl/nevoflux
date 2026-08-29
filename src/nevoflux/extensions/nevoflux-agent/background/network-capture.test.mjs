@@ -124,3 +124,14 @@ test('没开启时 record 不存 —— 默认不抓是硬的', () => {
   cap.start(1);
   assert.equal(cap.read(1, {}).records.length, 0);
 });
+
+test('clearAll 清掉所有标签页 —— 停止时的「当前页」未必是开始时的那个', () => {
+  const cap = new NetworkCapture();
+  cap.start(1);
+  cap.start(2);
+  cap.record(1, { url: 'https://x.com/a', method: 'GET', status: 200 });
+  cap.clearAll();
+  assert.equal(cap.isActive(1), false);
+  assert.equal(cap.isActive(2), false);
+  assert.equal(cap.read(1, {}).active, false);
+});

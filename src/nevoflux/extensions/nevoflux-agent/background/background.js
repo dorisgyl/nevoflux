@@ -4124,7 +4124,11 @@ async function executeBrowserTool(request, caller = 'unknown') {
         return { success: true, result: { active: true } };
 
       case 'network_capture_stop':
-        networkCapture.stop(targetTabId);
+        // 全清,不是只清 targetTabId。停止时的「当前标签页」未必是开始时的那个
+        // ——用户在回合中途切一下标签页,原来那个就会一直录下去。清多了只是少
+        // 抓一点,清漏了是录了不该录的。
+        networkCapture.clearAll();
+        networkPending.clear();
         return { success: true, result: { active: false } };
 
       case 'network_requests': {
