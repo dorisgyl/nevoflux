@@ -135,3 +135,28 @@ test('clearAll 清掉所有标签页 —— 停止时的「当前页」未必是
   assert.equal(cap.isActive(2), false);
   assert.equal(cap.read(1, {}).active, false);
 });
+
+// 路由登记。这不是纯逻辑测试,它读 background.js 的源码 —— 因为这个 bug 没有
+// 别的地方能抓到:动作没登记进 DIRECT_ACTIONS 就会被转发给 sidebar WASM,那边
+// 没有处理器,消息被静默丢弃,daemon 等满 30 秒超时。没有任何一处报错。
+//
+// 这个代码库里同一个 bug 已经犯过四次(canvas_eval、recording_start/stop、
+// extractVisualIdentity 的注释都是事后补的教训),所以这次钉死。
+test('三个网络动作都登记进了 DIRECT_ACTIONS', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const src = readFileSync(fileURLToPath(new URL('./background.js', import.meta.url)), 'utf8');
+
+  const start = src.indexOf('const DIRECT_ACTIONS = new Set([');
+  assert.ok(start > 0, '找不到 DIRECT_ACTIONS —— 它被改名或移走了,这个测试要跟着改');
+  const block = src.slice(start, src.indexOf(']);', start));
+
+  for (const action of ['network_capture_start', 'network_capture_stop', 'network_requests']) {
+    assert.ok(
+      block.includes(`'${action}'`),
+      `${action} 不在 DIRECT_ACTIONS 里 —— 它会被转发到 sidebar 然后静默超时`
+    );
+    // 有 case 才有意义:登记了但没实现,同样是超时。
+    assert.ok(src.includes(`case '${action}'`), `${action} 没有对应的 case`);
+  }
+});

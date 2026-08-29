@@ -1998,6 +1998,11 @@ class ChannelManager {
         // .canvasEval → NevofluxChild.evalInIframe). The sidebar WASM has no
         // handler, so forwarding there silently drops it → 30s timeout.
         'canvas_eval',
+        // 网络捕获的缓冲活在 background.js 里(webRequest 只在这里能监听)。
+        // sidebar WASM 没有这三个动作的处理器,转发过去会被静默丢掉 → 30s 超时。
+        'network_capture_start',
+        'network_capture_stop',
+        'network_requests',
       ]);
       // In headless automation mode there is no sidebar, so every browser tool
       // must execute directly in the background (P1/A2). executeBrowserTool is
