@@ -1398,6 +1398,42 @@
         }
       },
       {
+        "name": "getConsoleMessages",
+        "type": "function",
+        "async": "promise",
+        "description": "Read a tab's console messages and uncaught JavaScript errors from the platform's console storage. Covers every same-tab frame, including cross-origin ones in other processes, and includes messages logged before this call.",
+        "parameters": [
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "options",
+            "type": "object",
+            "optional": true,
+            "properties": {
+              "levels": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "optional": true,
+                "description": "Only these levels, e.g. [\"error\", \"warn\"]."
+              },
+              "limit": {
+                "type": "integer",
+                "optional": true,
+                "description": "Most recent N messages (default 100)."
+              }
+            }
+          }
+        ],
+        "returns": {
+          "type": "object"
+        }
+      },
+      {
         "name": "getMarkdown",
         "type": "function",
         "async": "promise",

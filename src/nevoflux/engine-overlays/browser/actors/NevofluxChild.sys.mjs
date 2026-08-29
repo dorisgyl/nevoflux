@@ -492,6 +492,7 @@ export class NevofluxChild extends JSWindowActorChild {
       frameMain: () => this.frameMain(safeParams),
       getMarkdown: () => this.getMarkdown(safeParams),
       queryAll: () => this.queryAll(safeParams),
+      getConsoleMessages: () => this.getConsoleMessages(safeParams),
       probe: () => this.probe(safeParams),
       paste: () => this.paste(safeParams),
       fillRichText: () => this.fillRichText(safeParams),
@@ -5438,6 +5439,133 @@ export class NevofluxChild extends JSWindowActorChild {
       console.error('[NevofluxChild.getMarkdown] Error:', e);
       return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
     }
+  }
+
+  /**
+   * 读这个文档的控制台消息。
+   *
+   * 用的是 DevTools 自己那套 `nsIConsoleAPIStorage`,不是往页面里注入代码改
+   * `console.*`。当初设计时把注入当成唯一出路,于是这半个功能被搁置了 —— 注入
+   * 只能抓到注入之后的消息、会被 CSP 挡掉一部分、对特权页面无效。这条路三条都
+   * 不占:存储里本来就有历史缓冲,不涉及脚本注入,nevoflux:// 页面一样能读。
+   *
+   * 只覆盖本进程内的文档。跨源 iframe 在 Fission 下属于别的进程,由父进程分别
+   * 向各自的 actor 取,再合并。
+   */
+  getConsoleMessages(params = {}) {
+    const win = this.contentWindow;
+    if (!win) {
+      return { success: false, error: { code: 3002, message: 'No content window', recoverable: false } };
+    }
+
+    const wanted = Array.isArray(params.levels) && params.levels.length ? params.levels : null;
+    const perMessageCap = 2000;
+
+    // 本文档 + 同进程的子框架。
+    const ids = [];
+    const collect = (w, depth) => {
+      try {
+        const id = w.windowGlobalChild?.innerWindowId;
+        if (id) ids.push(String(id));
+        if (depth > 4) return;
+        for (let i = 0; i < w.frames.length; i++) {
+          // 跨源的会抛,那种归父进程去别的 actor 取。
+          try {
+            collect(w.frames[i], depth + 1);
+          } catch {}
+        }
+      } catch {}
+    };
+    collect(win, 0);
+
+    const describe = (v) => {
+      try {
+        if (v === null) return 'null';
+        const t = typeof v;
+        if (t === 'string') return v;
+        if (t === 'number' || t === 'boolean' || t === 'undefined' || t === 'bigint') {
+          return String(v);
+        }
+        if (t === 'function') return '[Function]';
+        // Error 直接 JSON 化会变成 {},而 message/stack 恰恰是要看的东西。
+        if (v && typeof v.message === 'string' && typeof v.stack === 'string') {
+          return v.name ? v.name + ': ' + v.message : v.message;
+        }
+        try {
+          const j = JSON.stringify(v);
+          if (j !== undefined) return j;
+        } catch {}
+        return String(v);
+      } catch {
+        return '[unserializable]';
+      }
+    };
+
+    const out = [];
+
+    // 1) console.* 调用。
+    try {
+      const storage = Cc['@mozilla.org/consoleAPI-storage;1'].getService(
+        Ci.nsIConsoleAPIStorage
+      );
+      for (const id of ids) {
+        let events;
+        try {
+          events = storage.getEvents(id) || [];
+        } catch {
+          continue;
+        }
+        for (const e of events) {
+          const level = String(e.level || 'log');
+          if (wanted && !wanted.includes(level)) continue;
+          let text = '';
+          try {
+            text = Array.from(e.arguments || []).map(describe).join(' ');
+          } catch {
+            text = '[unreadable arguments]';
+          }
+          out.push({
+            level,
+            text: text.length > perMessageCap ? text.slice(0, perMessageCap) + '…[truncated]' : text,
+            source: e.filename || undefined,
+            line: e.lineNumber || undefined,
+            column: e.columnNumber || undefined,
+            timestamp: e.timeStamp || undefined,
+            origin: 'console',
+          });
+        }
+      }
+    } catch {}
+
+    // 2) 未捕获的 JS 错误。它们不走 console.*,而「哪个请求 500 了」之外最想看到
+    //    的就是这些 —— 少了它们,一个报错的页面在这里看起来一切正常。
+    try {
+      const idSet = new Set(ids);
+      for (const m of Services.console.getMessageArray() || []) {
+        let err;
+        try {
+          err = m.QueryInterface(Ci.nsIScriptError);
+        } catch {
+          continue;
+        }
+        if (!idSet.has(String(err.innerWindowID))) continue;
+        const level = err.isWarning ? 'warn' : 'error';
+        if (wanted && !wanted.includes(level)) continue;
+        const text = String(err.errorMessage || '');
+        out.push({
+          level,
+          text: text.length > perMessageCap ? text.slice(0, perMessageCap) + '…[truncated]' : text,
+          source: err.sourceName || undefined,
+          line: err.lineNumber || undefined,
+          column: err.columnNumber || undefined,
+          timestamp: err.timeStamp || undefined,
+          origin: 'javascript',
+        });
+      }
+    } catch {}
+
+    out.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+    return { success: true, messages: out, url: win.location?.href };
   }
 
   /**

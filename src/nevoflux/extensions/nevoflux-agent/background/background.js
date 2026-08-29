@@ -55,14 +55,43 @@ const networkCapture = new NetworkCapture();
 /** 到点自动停的定时器。忘记关掉是这种设计唯一真正的风险。 */
 let networkExpiryTimer = null;
 
+/**
+ * 让用户知道录制的状态变化。
+ *
+ * 侧栏是 WASM 应用,加一个常驻指示器要动另一条构建链;而真正的风险不是「不知道
+ * 现在开着」,是「忘了它开着」。开始和自动到期各发一条通知就覆盖了这一点 ——
+ * 两次状态转换都有声音,中间任何一次读取的返回里还带着 remaining_s。
+ */
+function notifyCaptureState(title, message) {
+  try {
+    browser.notifications.create(`nevoflux-netcap-${Date.now()}`, {
+      type: 'basic',
+      iconUrl: browser.runtime.getURL('icons/icon-48.png'),
+      title,
+      message,
+    });
+  } catch (err) {
+    console.warn('[NevoFlux] 网络录制通知失败:', err);
+  }
+}
+
 function armNetworkCapture() {
+  const alreadyOn = networkCapture.isArmed(Date.now());
   networkCapture.arm(Date.now());
   if (networkExpiryTimer) clearTimeout(networkExpiryTimer);
   networkExpiryTimer = setTimeout(() => {
     networkExpiryTimer = null;
     disarmNetworkCapture();
     console.log('[NevoFlux] 网络捕获已到时自动停止');
+    notifyCaptureState('网络录制已停止', '已到 30 分钟上限,记录已清空。');
   }, MAX_SESSION_MS);
+  // 续期不再报一次 —— 同一段录制里重复弹窗只会让人学会忽略它。
+  if (!alreadyOn) {
+    notifyCaptureState(
+      '网络录制已开始',
+      '所有标签页的请求会被记录,30 分钟后自动停止。说「停止录制」可随时结束。'
+    );
+  }
 }
 
 function disarmNetworkCapture() {
@@ -124,12 +153,15 @@ if (typeof browser.webRequest === 'undefined') {
   );
 
   browser.webRequest.onCompleted.addListener(
-    // 大小拿得到就带上,拿不到就省略 —— 部分缓存命中的请求上 Firefox 不给这两个值。
+    // 拿得到就带上,拿不到就省略 —— 部分缓存命中的请求上 Firefox 不给这两个值。
+    //
+    // 叫 *_bytes 而不是 *_size:这是连请求头在内的传输字节数,不是 body 大小。
+    // 实测里模型把 request_size 读成了「请求体 2110 字节」。
     (d) =>
       finishNetworkRecord(d, {
         status: d.statusCode,
-        request_size: d.requestSize,
-        response_size: d.responseSize,
+        request_bytes: d.requestSize,
+        response_bytes: d.responseSize,
       }),
     { urls: ['<all_urls>'] },
     ['responseHeaders']
@@ -2046,6 +2078,9 @@ class ChannelManager {
         'network_capture_start',
         'network_capture_stop',
         'network_requests',
+        // 控制台走特权 API(browser.nevoflux.getConsoleMessages),整件事在
+        // background.js 里做完;sidebar WASM 没有这个动作的处理器。
+        'console_messages',
       ]);
       // In headless automation mode there is no sidebar, so every browser tool
       // must execute directly in the background (P1/A2). executeBrowserTool is
@@ -4178,6 +4213,22 @@ async function executeBrowserTool(request, caller = 'unknown') {
         disarmNetworkCapture();
         return { success: true, result: { active: false } };
 
+      case 'console_messages': {
+        try {
+          const result = await browser.nevoflux.getConsoleMessages(targetTabId, {
+            levels: Array.isArray(params?.levels) ? params.levels : undefined,
+            limit: Number.isInteger(params?.limit) ? params.limit : undefined,
+          });
+          if (result?.success === false) return result;
+          return { success: true, result };
+        } catch (error) {
+          return {
+            success: false,
+            error: { code: -1, message: error.message, recoverable: true },
+          };
+        }
+      }
+
       case 'network_requests': {
         // 「标签页已关」和「没在录」在缓冲里长得一模一样(都是没有槽位),
         // 但对使用者是两件事。先问标签页还在不在。
@@ -4193,7 +4244,10 @@ async function executeBrowserTool(request, caller = 'unknown') {
           success: true,
           result: networkCapture.read(
             targetTabId,
-            { onlyFailed: !!params?.only_failed },
+            {
+              onlyFailed: !!params?.only_failed,
+              types: Array.isArray(params?.types) ? params.types : null,
+            },
             Date.now()
           ),
         };

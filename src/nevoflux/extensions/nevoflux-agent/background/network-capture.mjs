@@ -163,7 +163,7 @@ export class NetworkCapture {
     return [...this.tabs.keys()];
   }
 
-  read(tabId, { onlyFailed = false } = {}, now = 0) {
+  read(tabId, { onlyFailed = false, types = null } = {}, now = 0) {
     const empty = { total: 0, failed: 0, dropped: 0, by_status: {} };
     if (!this.isArmed(now)) {
       // 「没开」和「开着但没东西」是两件事,而两者都是空列表。只给一个布尔位
@@ -199,7 +199,11 @@ export class NetworkCapture {
       };
     }
 
-    const matched = onlyFailed ? slot.records.filter(isFailure) : slot.records.slice();
+    // 两个筛子可以叠加:「只看失败的 xhr」是个真实的问题。
+    const wanted = Array.isArray(types) && types.length ? new Set(types) : null;
+    const matched = slot.records.filter(
+      (r) => (!onlyFailed || isFailure(r)) && (!wanted || wanted.has(r.type))
+    );
     // 只返回最近的一段。旧的还在缓冲里,但一次性全给出去就是几十万 token。
     const records = matched.slice(-MAX_RETURNED);
     const by_status = {};
@@ -218,7 +222,7 @@ export class NetworkCapture {
     const notes = [];
     const STATIC = ['script', 'stylesheet', 'image', 'font', 'media'];
     const staticCount = STATIC.reduce((n, t) => n + (by_type[t] || 0), 0);
-    if (!onlyFailed && staticCount > slot.records.length / 2) {
+    if (!onlyFailed && !wanted && staticCount > slot.records.length / 2) {
       // 页面加载的尾巴天然是一堆静态资源,于是「最近 100 条」常常就是一面 JS 墙。
       // 与其悄悄把它们藏起来,不如把构成说出来,让调用方自己挑。
       notes.push(

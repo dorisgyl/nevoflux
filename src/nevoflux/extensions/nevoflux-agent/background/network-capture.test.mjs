@@ -157,6 +157,23 @@ test('筛过失败之后不再啰嗦静态资源 —— 那时构成已经不是
   assert.equal(got.message, undefined);
 });
 
+test('按类型筛,并且能和 only_failed 叠加', () => {
+  const cap = new NetworkCapture();
+  cap.arm(T0);
+  cap.record(1, { url: 'a.js', method: 'GET', status: 200, type: 'script' }, T0);
+  cap.record(1, { url: '/api/ok', method: 'GET', status: 200, type: 'xmlhttprequest' }, T0);
+  cap.record(1, { url: '/api/bad', method: 'GET', status: 500, type: 'xmlhttprequest' }, T0);
+
+  const xhr = cap.read(1, { types: ['xmlhttprequest'] }, T0);
+  assert.equal(xhr.records.length, 2);
+  assert.equal(xhr.message, undefined, '筛过类型之后不必再唠叨静态资源');
+
+  // 「只看失败的 xhr」是个真实的问题,两个筛子要能叠。
+  const both = cap.read(1, { types: ['xmlhttprequest'], onlyFailed: true }, T0);
+  assert.equal(both.records.length, 1);
+  assert.ok(both.records[0].url.includes('bad'));
+});
+
 // --- 会话生命周期:这次改动的核心 ---
 
 test('跨回合存活 —— 这正是改成会话制要解决的问题', () => {
@@ -282,7 +299,13 @@ test('网络动作都登记进了 DIRECT_ACTIONS,且都有 case', async () => {
   const block = src.slice(start, src.indexOf(']);', start));
   const q = String.fromCharCode(39);
 
-  for (const action of ['network_capture_start', 'network_capture_stop', 'network_requests']) {
+  const actions = [
+    'network_capture_start',
+    'network_capture_stop',
+    'network_requests',
+    'console_messages',
+  ];
+  for (const action of actions) {
     assert.ok(
       block.includes(q + action + q),
       action + ' 不在 DIRECT_ACTIONS 里 —— 它会被转发到 sidebar 然后静默超时'
