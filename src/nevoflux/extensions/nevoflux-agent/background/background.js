@@ -12,7 +12,12 @@ import { makeHeader } from '../content/recorder-logic.mjs';
 import { createAgentStatusMachine } from './agent-status-machine.mjs';
 import { promptFor } from './avatar-prompt-policy.mjs';
 import { checkWebSession } from './web-session.mjs';
-import { NetworkCapture, redactUrl, redactHeaders } from './network-capture.mjs';
+import {
+  NetworkCapture,
+  redactUrl,
+  redactHeaders,
+  MAX_SESSION_MS,
+} from './network-capture.mjs';
 
 // Immediate debug log to verify script is loading
 console.log('[NevoFlux] Background script starting...');
@@ -36,13 +41,38 @@ console.log('[NevoFlux] Background script starting...');
 // =============================================================================
 
 /**
- * 网络捕获。默认全空 —— 只有被点名的回合才会有标签页进来。
+ * 网络捕获。默认关着 —— 只有用户点名工具时才开。
  *
- * 监听器始终注册,但 `networkCapture.record` 对没有 start 过的标签页什么都不做:
- * 「默认不抓」由缓冲那一层保证,而不是靠这里装卸监听器。装卸会引入一个更难的
- * 问题 —— 回合切换的瞬间正在飞的请求算谁的。
+ * 开启后跨回合存活,直到显式停止或到点自动停。最初它只活一个 agent 回合,实测
+ * 下来那个窗口对真实调试没用:人要自己点几下页面,等切过去回合早结束了。
+ *
+ * 监听器始终注册,但 `networkCapture.record` 在没开的时候什么都不做:「默认不
+ * 抓」由缓冲那一层保证,而不是靠这里装卸监听器。装卸还会引入一个更难的问题 ——
+ * 开关切换的瞬间正在飞的请求算谁的。
  */
 const networkCapture = new NetworkCapture();
+
+/** 到点自动停的定时器。忘记关掉是这种设计唯一真正的风险。 */
+let networkExpiryTimer = null;
+
+function armNetworkCapture() {
+  networkCapture.arm(Date.now());
+  if (networkExpiryTimer) clearTimeout(networkExpiryTimer);
+  networkExpiryTimer = setTimeout(() => {
+    networkExpiryTimer = null;
+    disarmNetworkCapture();
+    console.log('[NevoFlux] 网络捕获已到时自动停止');
+  }, MAX_SESSION_MS);
+}
+
+function disarmNetworkCapture() {
+  if (networkExpiryTimer) {
+    clearTimeout(networkExpiryTimer);
+    networkExpiryTimer = null;
+  }
+  networkCapture.disarm();
+  networkPending.clear();
+}
 
 /** requestId -> 起始信息。onCompleted / onErrorOccurred 时补齐成一条记录。 */
 const networkPending = new Map();
@@ -59,7 +89,7 @@ function finishNetworkRecord(d, extra) {
     request_headers: redactHeaders(p?.requestHeaders),
     response_headers: redactHeaders(d.responseHeaders),
     ...extra,
-  });
+  }, Date.now());
 }
 
 // 权限没生效时 `browser.webRequest` 是 undefined,而注册发生在模块顶层 —— 抛出去
@@ -70,7 +100,7 @@ if (typeof browser.webRequest === 'undefined') {
 } else {
   browser.webRequest.onBeforeRequest.addListener(
     (d) => {
-      if (d.tabId < 0 || !networkCapture.isActive(d.tabId)) return;
+      if (d.tabId < 0 || !networkCapture.isArmed(Date.now())) return;
       networkPending.set(d.requestId, {
         started: d.timeStamp,
         url: d.url,
@@ -85,7 +115,7 @@ if (typeof browser.webRequest === 'undefined') {
   // 恰恰是请求头才有的信息 —— 少了它,脱敏那条规则就没有作用对象。
   browser.webRequest.onSendHeaders.addListener(
     (d) => {
-      if (d.tabId < 0 || !networkCapture.isActive(d.tabId)) return;
+      if (d.tabId < 0 || !networkCapture.isArmed(Date.now())) return;
       const p = networkPending.get(d.requestId);
       if (p) p.requestHeaders = d.requestHeaders;
     },
@@ -4136,21 +4166,20 @@ async function executeBrowserTool(request, caller = 'unknown') {
       case 'get_markdown':
         return await executeGetMarkdownViaApi(targetTabId, params);
 
-      // 网络捕获。开关由回合驱动(见 run_loop),这里只执行。
+      // 网络捕获。开启后跨回合存活,直到停止或到点自动停。
       case 'network_capture_start':
-        networkCapture.start(targetTabId);
-        return { success: true, result: { active: true } };
+        armNetworkCapture();
+        return {
+          success: true,
+          result: { active: true, remaining_s: Math.round(MAX_SESSION_MS / 1000) },
+        };
 
       case 'network_capture_stop':
-        // 全清,不是只清 targetTabId。停止时的「当前标签页」未必是开始时的那个
-        // ——用户在回合中途切一下标签页,原来那个就会一直录下去。清多了只是少
-        // 抓一点,清漏了是录了不该录的。
-        networkCapture.clearAll();
-        networkPending.clear();
+        disarmNetworkCapture();
         return { success: true, result: { active: false } };
 
       case 'network_requests': {
-        // 「标签页已关」和「本回合没开」在缓冲里长得一模一样(都是没有槽位),
+        // 「标签页已关」和「没在录」在缓冲里长得一模一样(都是没有槽位),
         // 但对使用者是两件事。先问标签页还在不在。
         try {
           await browser.tabs.get(targetTabId);
@@ -4162,7 +4191,11 @@ async function executeBrowserTool(request, caller = 'unknown') {
         }
         return {
           success: true,
-          result: networkCapture.read(targetTabId, { onlyFailed: !!params?.only_failed }),
+          result: networkCapture.read(
+            targetTabId,
+            { onlyFailed: !!params?.only_failed },
+            Date.now()
+          ),
         };
       }
 

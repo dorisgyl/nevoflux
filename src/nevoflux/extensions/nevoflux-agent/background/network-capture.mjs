@@ -1,11 +1,24 @@
 // 网络请求的捕获缓冲与脱敏。
 //
-// 纯逻辑,不碰任何浏览器 API —— 监听器那一半在 background.js 里,而这一半是
-// 整个功能的隐私与内存策略所在,必须能被单独测。
+// 纯逻辑,不碰任何浏览器 API,也不读时钟 —— 监听器和计时那一半在 background.js
+// 里,而这一半是整个功能的隐私与内存策略所在,必须能被单独测。
 //
-// 两条硬规则:
-//   1. 没有 start 过的标签页,record 一个字都不存。「默认不抓」不能靠调用方自觉。
-//   2. read 要能区分「未开启」和「零条」。空列表会让模型断定页面没发请求。
+// ## 为什么是「一段会话」而不是「一个回合」
+//
+// 最初捕获只活一个 agent 回合。实测下来那个窗口对真实调试没用:人要自己点几下
+// 页面,等切过去回合早结束了,拿到的永远是空列表。第一个使用场景(调试自己开发
+// 的页面)恰恰被这个限制挡住。
+//
+// 现在改成显式开启、显式结束,中间跨多少个回合都行。「默认不抓、必须由用户点名
+// 才开」这条没变,变的只是那次点名的有效期。代价是数据会在你没再要求的时候继续
+// 产生,所以有两道约束:随时可以停,以及一个到点自动停的上限 —— 忘记关是这种
+// 设计唯一真正的风险。
+//
+// ## 两条硬规则
+//
+//   1. 没 arm 过就一个字都不存。「默认不抓」不能靠调用方自觉。
+//   2. read 要能分辨三种情况:没开、开着但没东西、有数据。前两种都是空列表,
+//      而模型会把空列表读成「页面没发请求」—— 实测发生过。
 
 /** 值会被打码的 query 参数名(子串,大小写不敏感)。 */
 const SECRET_PARAM_HINTS = ['token', 'key', 'secret', 'auth', 'session', 'password'];
@@ -18,6 +31,14 @@ const HEADER_REDACT = ['authorization', 'cookie', 'set-cookie', 'x-api-key', 'pr
 
 export const MAX_RECORDS = 200;
 export const MAX_BYTES = 262144;
+
+/**
+ * 一次开启最多录多久。
+ *
+ * 兜底,不是功能。忘记关掉是这种设计唯一真正的风险 —— 用户开了录制去调试,
+ * 然后转头做别的,浏览器就一直在记。到点自动停,比指望人记得住可靠。
+ */
+export const MAX_SESSION_MS = 30 * 60 * 1000;
 
 const REDACTED = '<redacted>';
 
@@ -67,28 +88,47 @@ export class NetworkCapture {
   constructor() {
     /** tabId -> { records: [], bytes: number, dropped: number } */
     this.tabs = new Map();
+    /** 到期时刻(epoch ms);null 表示没开。 */
+    this.armedUntil = null;
   }
 
-  start(tabId) {
-    this.tabs.set(tabId, { records: [], bytes: 0, dropped: 0 });
+  /** 开启录制。`now` 由调用方给 —— 这个模块不读时钟,才好测。 */
+  arm(now, ttlMs = MAX_SESSION_MS) {
+    this.armedUntil = now + Math.min(ttlMs, MAX_SESSION_MS);
   }
 
-  stop(tabId) {
-    this.tabs.delete(tabId);
-  }
-
-  isActive(tabId) {
-    return this.tabs.has(tabId);
-  }
-
-  clearAll() {
+  /** 停止并丢弃全部数据。 */
+  disarm() {
+    this.armedUntil = null;
     this.tabs.clear();
   }
 
-  record(tabId, entry) {
-    const slot = this.tabs.get(tabId);
-    // 没开启就不存。这条是「默认不抓」的实现,不是防御性检查。
-    if (!slot) return;
+  /**
+   * 现在还在录吗。到点的话顺手清掉 ——「过期」和「已停」对外必须是同一件事,
+   * 不能留下一份还读得到的过期数据。
+   */
+  isArmed(now) {
+    if (this.armedUntil === null) return false;
+    if (now >= this.armedUntil) {
+      this.disarm();
+      return false;
+    }
+    return true;
+  }
+
+  /** 还能录多久(秒)。没开时是 0。 */
+  remainingS(now) {
+    return this.isArmed(now) ? Math.max(0, Math.round((this.armedUntil - now) / 1000)) : 0;
+  }
+
+  record(tabId, entry, now) {
+    // 没开就不存。这条是「默认不抓」的实现,不是防御性检查。
+    if (!this.isArmed(now)) return;
+    let slot = this.tabs.get(tabId);
+    if (!slot) {
+      slot = { records: [], bytes: 0, dropped: 0 };
+      this.tabs.set(tabId, slot);
+    }
     slot.records.push(entry);
     slot.bytes += sizeOf(entry);
     // 两个上限同时生效:一个页面可能发两千个小请求,也可能发三个巨型 URL。
@@ -100,20 +140,47 @@ export class NetworkCapture {
     }
   }
 
-  read(tabId, { onlyFailed = false } = {}) {
-    const slot = this.tabs.get(tabId);
-    if (!slot) {
-      // 「未开启」与「零条」是两件事。只给一个布尔位不够 ——
-      // 模型读到的是这段 JSON,所以把「怎么才能开」写进去。
+  /** 哪些标签页有数据。给「当前这页是空的,但别的页有」那种情况用。 */
+  capturedTabIds() {
+    return [...this.tabs.keys()];
+  }
+
+  read(tabId, { onlyFailed = false } = {}, now = 0) {
+    const empty = { total: 0, failed: 0, dropped: 0, by_status: {} };
+    if (!this.isArmed(now)) {
+      // 「没开」和「开着但没东西」是两件事,而两者都是空列表。只给一个布尔位
+      // 不够 —— 模型读到的是这段 JSON,实测里它把 active:true 的空列表也读成
+      // 了「未开启」。所以把区别和出路都写进去。
       return {
         active: false,
         records: [],
-        summary: { total: 0, failed: 0, dropped: 0, by_status: {} },
+        summary: empty,
+        remaining_s: 0,
         message:
-          '本回合未开启网络捕获。在提示词里写出 browser_network_requests 才会记录,' +
-          '且只能记录写出它之后发生的请求。',
+          '网络捕获未开启。在提示词里写出 browser_network_requests 即可开启,' +
+          '开启后会一直记录(最多 30 分钟)直到你要求停止,期间你自己点击页面' +
+          '产生的请求也会被记录。',
       };
     }
+
+    const slot = this.tabs.get(tabId);
+    const remaining_s = this.remainingS(now);
+    if (!slot || slot.records.length === 0) {
+      const others = this.capturedTabIds().filter((id) => id !== tabId);
+      return {
+        active: true,
+        records: [],
+        summary: empty,
+        remaining_s,
+        message:
+          `网络捕获开启中(还剩 ${remaining_s} 秒),但这个标签页还没有记录到请求。` +
+          (others.length
+            ? `有记录的标签页:${others.join(', ')} —— 换 tab_id 再读一次。`
+            : '让页面产生请求(重新加载,或直接在页面上操作),然后再读一次。') +
+          '捕获不包含开启之前发生的请求。',
+      };
+    }
+
     const records = onlyFailed ? slot.records.filter(isFailure) : slot.records.slice();
     const by_status = {};
     let failed = 0;
@@ -122,19 +189,11 @@ export class NetworkCapture {
       by_status[k] = (by_status[k] || 0) + 1;
       if (isFailure(r)) failed++;
     }
-    const out = {
+    return {
       active: true,
       records,
       summary: { total: slot.records.length, failed, dropped: slot.dropped, by_status },
+      remaining_s,
     };
-    // 开着但一条没有,和没开着长得太像了 —— 实测里模型把 active:true + 空列表
-    // 读成了「捕获未开启」。一个布尔位不足以让它分辨,得把区别和出路说出来。
-    if (slot.records.length === 0) {
-      out.message =
-        '捕获已开启,但本回合开始之后这个标签页没有发出任何请求。捕获不覆盖回合' +
-        '开始之前发生的请求 —— 想抓的话,在同一回合里让页面重新加载(例如用 ' +
-        'browser_navigate 打开目标地址),然后再读一次。';
-    }
-    return out;
   }
 }

@@ -1,7 +1,8 @@
-// 网络捕获的缓冲与脱敏。`node --test network-capture.test.mjs`。
+// 网络捕获的缓冲、脱敏与会话生命周期。`node --test network-capture.test.mjs`。
 //
 // 这一层是整个功能的隐私与内存策略所在,而它的失败是静默的:打码漏了一个参数
-// 名,凭证就进了模型上下文;上限只设了一个,另一种请求形状就把内存吃穿。
+// 名,凭证就进了模型上下文;上限只设了一个,另一种请求形状就把内存吃穿;录制
+// 忘了停,浏览器就一直在记。
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import {
@@ -9,7 +10,10 @@ import {
   redactUrl,
   redactHeaders,
   MAX_RECORDS,
+  MAX_SESSION_MS,
 } from './network-capture.mjs';
+
+const T0 = 1_000_000; // 固定时刻,不读真实时钟
 
 test('凭证样式的 query 参数被打码,其余原样', () => {
   const got = redactUrl('https://x.com/a?page=2&access_token=abc123&q=hi');
@@ -30,37 +34,123 @@ test('敏感头保留键名,值被替换 —— 「带了认证」本身是信�
   const got = redactHeaders([
     { name: 'Content-Type', value: 'application/json' },
     { name: 'Authorization', value: 'Bearer secret' },
+    { name: 'Cookie', value: 'session=deadbeef' },
     { name: 'X-Internal', value: 'whatever' },
   ]);
   assert.equal(got['content-type'], 'application/json');
   assert.equal(got['authorization'], '<redacted>');
+  assert.equal(got['cookie'], '<redacted>');
   assert.equal(got['x-internal'], undefined, '白名单之外的头不该出现');
 });
 
-test('没开启捕获时,read 说的是「未开启」而不是「零条」', () => {
+test('没开启时 record 一个字都不存 —— 默认不抓是硬的', () => {
   const cap = new NetworkCapture();
-  const got = cap.read(1, {});
-  assert.equal(got.active, false);
-  assert.deepEqual(got.records, []);
-  // 布尔位不够:模型读的是这段 JSON,得告诉它怎么才能开。
-  assert.ok(got.message && got.message.includes('browser_network_requests'), got.message);
+  cap.record(1, { url: 'https://x.com/a', method: 'GET', status: 200 }, T0);
+  cap.arm(T0);
+  assert.equal(cap.read(1, {}, T0).records.length, 0);
 });
 
-test('开启了但没有请求,是「零条」而不是「未开启」', () => {
+test('没开启时说的是「未开启」并给出开启方法', () => {
   const cap = new NetworkCapture();
-  cap.start(1);
-  const got = cap.read(1, {});
+  const got = cap.read(1, {}, T0);
+  assert.equal(got.active, false);
+  assert.deepEqual(got.records, []);
+  assert.ok(got.message.includes('browser_network_requests'), got.message);
+});
+
+test('开着但零条:说清是另一回事,并给出出路', () => {
+  const cap = new NetworkCapture();
+  cap.arm(T0);
+  const got = cap.read(1, {}, T0);
   assert.equal(got.active, true);
   assert.equal(got.records.length, 0);
+  assert.ok(got.message, '零条必须带说明');
+  assert.ok(!got.message.includes('未开启'), '不能和「没开」混为一谈: ' + got.message);
+  assert.ok(got.remaining_s > 0);
 });
+
+test('当前页空但别的页有记录时,要说出是哪个 tab', () => {
+  const cap = new NetworkCapture();
+  cap.arm(T0);
+  cap.record(7, { url: 'https://x.com/a', method: 'GET', status: 200 }, T0);
+  const got = cap.read(1, {}, T0);
+  assert.equal(got.records.length, 0);
+  assert.ok(got.message.includes('7'), got.message);
+});
+
+test('有记录时不带说明 —— 免得读成「没抓到」', () => {
+  const cap = new NetworkCapture();
+  cap.arm(T0);
+  cap.record(1, { url: 'https://x.com/a', method: 'GET', status: 200 }, T0);
+  assert.equal(cap.read(1, {}, T0).message, undefined);
+});
+
+// --- 会话生命周期:这次改动的核心 ---
+
+test('跨回合存活 —— 这正是改成会话制要解决的问题', () => {
+  const cap = new NetworkCapture();
+  cap.arm(T0);
+  // 「回合」在这一层不存在。开启之后的任意时刻,人自己点出来的请求都要被记到。
+  cap.record(1, { url: 'https://app.local/api', method: 'GET', status: 200 }, T0 + 60_000);
+  cap.record(1, { url: 'https://app.local/save', method: 'POST', status: 500 }, T0 + 120_000);
+  const got = cap.read(1, {}, T0 + 121_000);
+  assert.equal(got.active, true);
+  assert.equal(got.records.length, 2);
+});
+
+test('到点自动停 —— 忘记关是这种设计唯一真正的风险', () => {
+  const cap = new NetworkCapture();
+  cap.arm(T0);
+  assert.equal(cap.isArmed(T0 + MAX_SESSION_MS - 1), true);
+  assert.equal(cap.isArmed(T0 + MAX_SESSION_MS), false);
+});
+
+test('过期后数据也没了,不是只是读不到', () => {
+  const cap = new NetworkCapture();
+  cap.arm(T0);
+  cap.record(1, { url: 'https://x.com/a', method: 'GET', status: 200 }, T0);
+  const got = cap.read(1, {}, T0 + MAX_SESSION_MS);
+  assert.equal(got.active, false);
+  assert.deepEqual(got.records, []);
+  // 再把时钟拨回去也不该复活。
+  assert.deepEqual(cap.read(1, {}, T0).records, []);
+});
+
+test('ttl 不能超过上限 —— 调用方给再大也按上限算', () => {
+  const cap = new NetworkCapture();
+  cap.arm(T0, MAX_SESSION_MS * 10);
+  assert.equal(cap.isArmed(T0 + MAX_SESSION_MS), false);
+});
+
+test('disarm 立刻停止并清空全部标签页', () => {
+  const cap = new NetworkCapture();
+  cap.arm(T0);
+  cap.record(1, { url: 'https://x.com/a', method: 'GET', status: 200 }, T0);
+  cap.record(2, { url: 'https://x.com/b', method: 'GET', status: 200 }, T0);
+  cap.disarm();
+  assert.equal(cap.isArmed(T0), false);
+  assert.deepEqual(cap.read(1, {}, T0).records, []);
+  assert.deepEqual(cap.read(2, {}, T0).records, []);
+});
+
+test('开启期间所有标签页都记 —— 人在哪一页点都算', () => {
+  const cap = new NetworkCapture();
+  cap.arm(T0);
+  cap.record(1, { url: 'https://x.com/one', method: 'GET', status: 200 }, T0);
+  cap.record(2, { url: 'https://x.com/two', method: 'GET', status: 200 }, T0);
+  assert.equal(cap.read(1, {}, T0).records.length, 1);
+  assert.equal(cap.read(2, {}, T0).records.length, 1);
+});
+
+// --- 上限与筛选 ---
 
 test('条数上限:超出的最旧记录被丢弃并计数', () => {
   const cap = new NetworkCapture();
-  cap.start(1);
+  cap.arm(T0);
   for (let i = 0; i < MAX_RECORDS + 5; i++) {
-    cap.record(1, { url: `https://x.com/${i}`, method: 'GET', status: 200 });
+    cap.record(1, { url: 'https://x.com/' + i, method: 'GET', status: 200 }, T0);
   }
-  const got = cap.read(1, {});
+  const got = cap.read(1, {}, T0);
   assert.equal(got.records.length, MAX_RECORDS);
   assert.equal(got.summary.dropped, 5);
   assert.ok(got.records[0].url.endsWith('/5'), '丢的该是最旧的');
@@ -68,81 +158,44 @@ test('条数上限:超出的最旧记录被丢弃并计数', () => {
 
 test('字节上限:少数巨型记录同样会触发丢弃', () => {
   const cap = new NetworkCapture();
-  cap.start(1);
+  cap.arm(T0);
   const huge = 'https://x.com/?p=' + 'a'.repeat(100_000);
-  for (let i = 0; i < 5; i++) cap.record(1, { url: huge, method: 'GET', status: 200 });
-  const got = cap.read(1, {});
-  assert.ok(got.records.length < 5, `字节上限没生效,留了 ${got.records.length} 条`);
+  for (let i = 0; i < 5; i++) cap.record(1, { url: huge, method: 'GET', status: 200 }, T0);
+  const got = cap.read(1, {}, T0);
+  assert.ok(got.records.length < 5, '字节上限没生效,留了 ' + got.records.length + ' 条');
   assert.ok(got.summary.dropped > 0);
 });
 
 test('only_failed 只留 4xx/5xx 与网络错误', () => {
   const cap = new NetworkCapture();
-  cap.start(1);
-  cap.record(1, { url: 'https://x.com/ok', method: 'GET', status: 200 });
-  cap.record(1, { url: 'https://x.com/bad', method: 'GET', status: 500 });
-  cap.record(1, { url: 'https://x.com/dead', method: 'GET', error: 'net::ERR_FAILED' });
-  const got = cap.read(1, { onlyFailed: true });
-  assert.equal(got.records.length, 2);
+  cap.arm(T0);
+  cap.record(1, { url: 'https://x.com/ok', method: 'GET', status: 200 }, T0);
+  cap.record(1, { url: 'https://x.com/bad', method: 'GET', status: 500 }, T0);
+  cap.record(1, { url: 'https://x.com/dead', method: 'GET', error: 'net::ERR_FAILED' }, T0);
+  assert.equal(cap.read(1, { onlyFailed: true }, T0).records.length, 2);
 });
 
 test('摘要按状态码分布,失败数单列', () => {
   const cap = new NetworkCapture();
-  cap.start(1);
-  cap.record(1, { url: 'a', method: 'GET', status: 200 });
-  cap.record(1, { url: 'b', method: 'GET', status: 200 });
-  cap.record(1, { url: 'c', method: 'GET', status: 404 });
-  const got = cap.read(1, {});
+  cap.arm(T0);
+  cap.record(1, { url: 'a', method: 'GET', status: 200 }, T0);
+  cap.record(1, { url: 'b', method: 'GET', status: 200 }, T0);
+  cap.record(1, { url: 'c', method: 'GET', status: 404 }, T0);
+  const got = cap.read(1, {}, T0);
   assert.equal(got.summary.total, 3);
   assert.equal(got.summary.by_status['200'], 2);
   assert.equal(got.summary.by_status['404'], 1);
   assert.equal(got.summary.failed, 1);
 });
 
-test('标签页之间互不可见', () => {
-  const cap = new NetworkCapture();
-  cap.start(1);
-  cap.start(2);
-  cap.record(1, { url: 'https://x.com/one', method: 'GET', status: 200 });
-  assert.equal(cap.read(1, {}).records.length, 1);
-  assert.equal(cap.read(2, {}).records.length, 0);
-});
-
-test('stop 之后数据不再存在 —— 回合结束即清空', () => {
-  const cap = new NetworkCapture();
-  cap.start(1);
-  cap.record(1, { url: 'https://x.com/a', method: 'GET', status: 200 });
-  cap.stop(1);
-  const got = cap.read(1, {});
-  assert.equal(got.active, false);
-  assert.deepEqual(got.records, []);
-});
-
-test('没开启时 record 不存 —— 默认不抓是硬的', () => {
-  const cap = new NetworkCapture();
-  cap.record(1, { url: 'https://x.com/a', method: 'GET', status: 200 });
-  cap.start(1);
-  assert.equal(cap.read(1, {}).records.length, 0);
-});
-
-test('clearAll 清掉所有标签页 —— 停止时的「当前页」未必是开始时的那个', () => {
-  const cap = new NetworkCapture();
-  cap.start(1);
-  cap.start(2);
-  cap.record(1, { url: 'https://x.com/a', method: 'GET', status: 200 });
-  cap.clearAll();
-  assert.equal(cap.isActive(1), false);
-  assert.equal(cap.isActive(2), false);
-  assert.equal(cap.read(1, {}).active, false);
-});
-
-// 路由登记。这不是纯逻辑测试,它读 background.js 的源码 —— 因为这个 bug 没有
-// 别的地方能抓到:动作没登记进 DIRECT_ACTIONS 就会被转发给 sidebar WASM,那边
-// 没有处理器,消息被静默丢弃,daemon 等满 30 秒超时。没有任何一处报错。
+// --- 路由登记 ---
 //
-// 这个代码库里同一个 bug 已经犯过四次(canvas_eval、recording_start/stop、
-// extractVisualIdentity 的注释都是事后补的教训),所以这次钉死。
-test('三个网络动作都登记进了 DIRECT_ACTIONS', async () => {
+// 这不是纯逻辑测试,它读 background.js 的源码 —— 因为这个 bug 没有别的地方能
+// 抓到:动作没登记进 DIRECT_ACTIONS 就会被转发给 sidebar WASM,那边没有处理器,
+// 消息被静默丢弃,daemon 等满 30 秒超时。没有任何一处报错。
+//
+// 这个代码库里同一个 bug 已经犯过五次,注释都是事后补的教训,所以钉死。
+test('网络动作都登记进了 DIRECT_ACTIONS,且都有 case', async () => {
   const { readFileSync } = await import('node:fs');
   const { fileURLToPath } = await import('node:url');
   const src = readFileSync(fileURLToPath(new URL('./background.js', import.meta.url)), 'utf8');
@@ -150,33 +203,13 @@ test('三个网络动作都登记进了 DIRECT_ACTIONS', async () => {
   const start = src.indexOf('const DIRECT_ACTIONS = new Set([');
   assert.ok(start > 0, '找不到 DIRECT_ACTIONS —— 它被改名或移走了,这个测试要跟着改');
   const block = src.slice(start, src.indexOf(']);', start));
+  const q = String.fromCharCode(39);
 
   for (const action of ['network_capture_start', 'network_capture_stop', 'network_requests']) {
     assert.ok(
-      block.includes(`'${action}'`),
-      `${action} 不在 DIRECT_ACTIONS 里 —— 它会被转发到 sidebar 然后静默超时`
+      block.includes(q + action + q),
+      action + ' 不在 DIRECT_ACTIONS 里 —— 它会被转发到 sidebar 然后静默超时'
     );
-    // 有 case 才有意义:登记了但没实现,同样是超时。
-    assert.ok(src.includes(`case '${action}'`), `${action} 没有对应的 case`);
+    assert.ok(src.includes('case ' + q + action + q), action + ' 没有对应的 case');
   }
-});
-
-test('开着但零条要说明白 —— 实测里模型把它读成了「未开启」', () => {
-  const cap = new NetworkCapture();
-  cap.start(1);
-  const got = cap.read(1, {});
-  assert.equal(got.active, true);
-  assert.equal(got.records.length, 0);
-  assert.ok(got.message, '零条时必须带说明');
-  // 得说清出路,不然模型只会重复读同一个空结果。
-  assert.ok(got.message.includes('browser_navigate'), got.message);
-  // 而且不能和「未开启」那句混淆。
-  assert.ok(!got.message.includes('未开启'), got.message);
-});
-
-test('有记录时不带那句说明 —— 免得读成「没抓到」', () => {
-  const cap = new NetworkCapture();
-  cap.start(1);
-  cap.record(1, { url: 'https://x.com/a', method: 'GET', status: 200 });
-  assert.equal(cap.read(1, {}).message, undefined);
 });
