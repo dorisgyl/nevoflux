@@ -128,6 +128,35 @@ test('only_failed 之后的截断也要如实说', () => {
   assert.equal(got.summary.matched, MAX_RETURNED + 10);
 });
 
+/// 实测:默认那一次返回的 100 条全是 github.githubassets.com 的 JS。返回的是
+/// 最近 100 条,而页面加载的尾巴天然就是一堆静态资源 —— 问「这个页面发了哪些
+/// 请求」拿到一面 JS 墙,得靠 only_failed 才捞得到有用的。
+test('静态资源占大头时要说出构成,而不是让调用方盲翻', () => {
+  const cap = new NetworkCapture();
+  cap.arm(T0);
+  for (let i = 0; i < 40; i++) {
+    cap.record(1, { url: 'https://cdn/x.js', method: 'GET', status: 200, type: 'script' }, T0);
+  }
+  cap.record(1, { url: 'https://a/api', method: 'GET', status: 200, type: 'xmlhttprequest' }, T0);
+  const got = cap.read(1, {}, T0);
+  assert.equal(got.summary.by_type.script, 40);
+  assert.equal(got.summary.by_type.xmlhttprequest, 1);
+  assert.ok(got.message, '构成失衡时要出声');
+  assert.ok(got.message.includes('40'), got.message);
+});
+
+test('筛过失败之后不再啰嗦静态资源 —— 那时构成已经不是问题', () => {
+  const cap = new NetworkCapture();
+  cap.arm(T0);
+  for (let i = 0; i < 40; i++) {
+    cap.record(1, { url: 'https://cdn/x.js', method: 'GET', status: 200, type: 'script' }, T0);
+  }
+  cap.record(1, { url: 'https://a/api', method: 'GET', status: 500, type: 'xmlhttprequest' }, T0);
+  const got = cap.read(1, { onlyFailed: true }, T0);
+  assert.equal(got.records.length, 1);
+  assert.equal(got.message, undefined);
+});
+
 // --- 会话生命周期:这次改动的核心 ---
 
 test('跨回合存活 —— 这正是改成会话制要解决的问题', () => {

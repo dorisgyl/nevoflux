@@ -203,16 +203,31 @@ export class NetworkCapture {
     // 只返回最近的一段。旧的还在缓冲里,但一次性全给出去就是几十万 token。
     const records = matched.slice(-MAX_RETURNED);
     const by_status = {};
+    const by_type = {};
     let failed = 0;
     for (const r of slot.records) {
       const k = r.error ? 'error' : String(r.status ?? 'unknown');
       by_status[k] = (by_status[k] || 0) + 1;
+      const t = r.type || 'unknown';
+      by_type[t] = (by_type[t] || 0) + 1;
       if (isFailure(r)) failed++;
     }
     // 数字自己不会说话。上一次实测里,模型看到 dropped: 332 就自行编了一个
     // 「并发请求被采样合并」的解释,于是用户以为什么都没丢 —— 而实际上五百多个
     // 请求里只剩了两百个。给了数据就要给读法。
     const notes = [];
+    const STATIC = ['script', 'stylesheet', 'image', 'font', 'media'];
+    const staticCount = STATIC.reduce((n, t) => n + (by_type[t] || 0), 0);
+    if (!onlyFailed && staticCount > slot.records.length / 2) {
+      // 页面加载的尾巴天然是一堆静态资源,于是「最近 100 条」常常就是一面 JS 墙。
+      // 与其悄悄把它们藏起来,不如把构成说出来,让调用方自己挑。
+      notes.push(
+        `这批记录里 ${staticCount}/${slot.records.length} 条是静态资源` +
+          '(script/stylesheet/image/font),按时间取最近的多半只会看到它们。' +
+          '关心页面在调什么接口就看 summary.by_type 里的 xmlhttprequest / fetch,' +
+          '关心坏掉的就用 only_failed。'
+      );
+    }
     if (records.length < matched.length) {
       notes.push(
         `符合条件的有 ${matched.length} 条,这里只返回最近的 ${records.length} 条。` +
@@ -235,6 +250,7 @@ export class NetworkCapture {
         failed,
         dropped: slot.dropped,
         by_status,
+        by_type,
       },
       remaining_s,
     };
