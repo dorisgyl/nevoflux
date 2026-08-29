@@ -56,7 +56,8 @@ function finishNetworkRecord(d, extra) {
     method: p?.method ?? d.method,
     type: p?.type ?? d.type,
     duration_ms: p ? Math.round(d.timeStamp - p.started) : undefined,
-    headers: redactHeaders(d.responseHeaders),
+    request_headers: redactHeaders(p?.requestHeaders),
+    response_headers: redactHeaders(d.responseHeaders),
     ...extra,
   });
 }
@@ -78,6 +79,18 @@ if (typeof browser.webRequest === 'undefined') {
       });
     },
     { urls: ['<all_urls>'] }
+  );
+
+  // 请求头单独一趟。onCompleted 只给响应头,而「这个请求带了 Authorization」
+  // 恰恰是请求头才有的信息 —— 少了它,脱敏那条规则就没有作用对象。
+  browser.webRequest.onSendHeaders.addListener(
+    (d) => {
+      if (d.tabId < 0 || !networkCapture.isActive(d.tabId)) return;
+      const p = networkPending.get(d.requestId);
+      if (p) p.requestHeaders = d.requestHeaders;
+    },
+    { urls: ['<all_urls>'] },
+    ['requestHeaders']
   );
 
   browser.webRequest.onCompleted.addListener(

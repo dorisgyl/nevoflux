@@ -122,10 +122,19 @@ export class NetworkCapture {
       by_status[k] = (by_status[k] || 0) + 1;
       if (isFailure(r)) failed++;
     }
-    return {
+    const out = {
       active: true,
       records,
       summary: { total: slot.records.length, failed, dropped: slot.dropped, by_status },
     };
+    // 开着但一条没有,和没开着长得太像了 —— 实测里模型把 active:true + 空列表
+    // 读成了「捕获未开启」。一个布尔位不足以让它分辨,得把区别和出路说出来。
+    if (slot.records.length === 0) {
+      out.message =
+        '捕获已开启,但本回合开始之后这个标签页没有发出任何请求。捕获不覆盖回合' +
+        '开始之前发生的请求 —— 想抓的话,在同一回合里让页面重新加载(例如用 ' +
+        'browser_navigate 打开目标地址),然后再读一次。';
+    }
+    return out;
   }
 }

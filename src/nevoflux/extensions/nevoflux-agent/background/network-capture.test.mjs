@@ -160,3 +160,23 @@ test('三个网络动作都登记进了 DIRECT_ACTIONS', async () => {
     assert.ok(src.includes(`case '${action}'`), `${action} 没有对应的 case`);
   }
 });
+
+test('开着但零条要说明白 —— 实测里模型把它读成了「未开启」', () => {
+  const cap = new NetworkCapture();
+  cap.start(1);
+  const got = cap.read(1, {});
+  assert.equal(got.active, true);
+  assert.equal(got.records.length, 0);
+  assert.ok(got.message, '零条时必须带说明');
+  // 得说清出路,不然模型只会重复读同一个空结果。
+  assert.ok(got.message.includes('browser_navigate'), got.message);
+  // 而且不能和「未开启」那句混淆。
+  assert.ok(!got.message.includes('未开启'), got.message);
+});
+
+test('有记录时不带那句说明 —— 免得读成「没抓到」', () => {
+  const cap = new NetworkCapture();
+  cap.start(1);
+  cap.record(1, { url: 'https://x.com/a', method: 'GET', status: 200 });
+  assert.equal(cap.read(1, {}).message, undefined);
+});
