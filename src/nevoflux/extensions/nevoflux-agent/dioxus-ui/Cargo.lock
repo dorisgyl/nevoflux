@@ -230,6 +230,7 @@ dependencies = [
 name = "chat-sidebar"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "console_error_panic_hook",
  "dioxus",
  "futures",
@@ -237,6 +238,7 @@ dependencies = [
  "gloo-utils",
  "js-sys",
  "markdown-render",
+ "qrcode",
  "serde",
  "serde_json",
  "shared-protocol",
@@ -2215,6 +2217,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "qrcode"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d68782463e408eb1e668cf6152704bd856c78c5b6417adaee3203d8f4c1fc9ec"
+
+[[package]]
 name = "quinn"
 version = "0.11.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3706,3 +3714,11 @@ name = "zmij"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "02aae0f83f69aafc94776e879363e9771d7ecbffe2c7fbb6c14c5e00dfe88439"
+
+[[patch.unused]]
+name = "skiff"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "skiff-net"
+version = "0.1.0"

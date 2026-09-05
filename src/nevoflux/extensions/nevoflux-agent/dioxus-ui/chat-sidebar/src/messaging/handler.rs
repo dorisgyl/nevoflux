@@ -2098,13 +2098,27 @@ fn handle_skill_list_response(mut ctx: AppContext, data: serde_json::Value) {
 /// far as the menu was concerned, which is the worst of both: a feature you
 /// can only use if you already know it is there.
 fn with_builtin_commands(mut skills: Vec<SkillItem>) -> Vec<SkillItem> {
-    const REMOTE_CONTROL: &str = "remote-control";
-    if !skills.iter().any(|s| s.name == REMOTE_CONTROL) {
-        skills.push(SkillItem {
-            name: REMOTE_CONTROL.to_string(),
-            description: "Open this session on another device, such as a phone".to_string(),
-            tags: vec!["builtin".to_string()],
-        });
+    const BUILTINS: &[(&str, &str)] = &[
+        (
+            "remote-control",
+            "Open this session on another device, such as a phone",
+        ),
+        // Distinct from the above, and the difference is the whole point:
+        // `/remote-control` opens one session for one sitting and keeps
+        // nothing, so a restart ends it. Pairing is remembered.
+        (
+            "pair-device",
+            "Pair a phone with this machine, so it keeps working after a restart",
+        ),
+    ];
+    for (name, description) in BUILTINS {
+        if !skills.iter().any(|s| s.name == *name) {
+            skills.push(SkillItem {
+                name: name.to_string(),
+                description: description.to_string(),
+                tags: vec!["builtin".to_string()],
+            });
+        }
     }
     skills.sort_by(|a, b| a.name.cmp(&b.name));
     skills

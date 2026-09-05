@@ -1527,6 +1527,52 @@ pub async fn remote_start(session_id: &str, mode: ChatMode) -> Result<(String, S
     Ok((s("channel_id"), s("pairing_code")))
 }
 
+/// `remote.pair` — pair a device with this machine, durably.
+///
+/// Distinct from [`remote_start`], which binds one channel to one session for
+/// one sitting and keeps nothing. A pairing survives a restart: the daemon
+/// stores it and dials both its channels again at every startup, which is what
+/// makes a phone still work tomorrow without anybody typing a code again.
+///
+/// Returns `(control_channel_id, pairing_code)`. The code is shown once and
+/// never again — what the daemon keeps is the two keys it derives, so there is
+/// nothing left to display a second time.
+pub async fn remote_pair() -> Result<(String, String), String> {
+    let d = system_command("remote.pair", serde_json::json!({})).await?;
+    let s = |k: &str| {
+        d.get(k)
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string()
+    };
+    Ok((s("control_channel_id"), s("pairing_code")))
+}
+
+/// `remote.pairings` — what can reach this machine.
+///
+/// Carries no secrets: this answers "which devices are paired", which needs
+/// neither a code nor a key.
+pub async fn remote_pairings() -> Result<Vec<serde_json::Value>, String> {
+    let d = system_command("remote.pairings", serde_json::json!({})).await?;
+    Ok(d.get("pairings")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default())
+}
+
+/// `remote.unpair` — revoke one device.
+///
+/// Takes its push subscription with it. An endpoint left behind is a standing
+/// capability to make somebody's phone buzz.
+pub async fn remote_unpair(control_channel_id: &str) -> Result<bool, String> {
+    let d = system_command(
+        "remote.unpair",
+        serde_json::json!({ "control_channel_id": control_channel_id }),
+    )
+    .await?;
+    Ok(d.get("removed").and_then(|v| v.as_bool()).unwrap_or(false))
+}
+
 /// `schedule.list` — full authoritative snapshot of all schedules.
 /// Returns them deserialized straight into [`ScheduleJobState`].
 pub async fn schedule_list() -> Result<Vec<ScheduleJobState>, String> {
