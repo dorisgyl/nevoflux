@@ -708,6 +708,23 @@ pub fn TextInput(disabled: bool) -> Element {
             return;
         }
 
+        // /pair-device: the durable counterpart to /remote-control. Handled
+        // here for the same reason that one is — it never reaches the daemon as
+        // a chat turn.
+        if text.trim() == "/pair-device" {
+            input_text.set(String::new());
+            rows.set(1);
+            show_tab_selector.set(false);
+            attached_files.set(Vec::new());
+
+            ctx.messages.write().push(Message::user(&text));
+            let messages = ctx.messages;
+            wasm_bindgen_futures::spawn_local(async move {
+                crate::messaging::device_pair::run(messages).await;
+            });
+            return;
+        }
+
         input_text.set(String::new());
         rows.set(1);
         show_tab_selector.set(false);

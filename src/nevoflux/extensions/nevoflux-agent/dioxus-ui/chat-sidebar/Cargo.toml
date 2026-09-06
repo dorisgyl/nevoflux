@@ -31,5 +31,12 @@ tracing.workspace = true
 tracing-wasm.workspace = true
 console_error_panic_hook = "0.1"
 
+# QR for the pairing link (design §12.3). Generated here rather than in the
+# daemon: the headless head prints to a pipe and cannot show a picture, so a QR
+# would serve exactly one of the two callers and has no business in the code
+# they share. Pure Rust, no renderer of its own — it emits the SVG we inline.
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+base64 = "0.22"
+
 [features]
 default = []
